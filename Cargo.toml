@@ -1,0 +1,12 @@
+[workspace]
+members = [
+    "argentum-core",
+]
+
+[package]
+name = "argentum-gb"
+version = "0.1.0"
+authors = ["Anish Jewalikar <anishjewalikar@gmail.com>"]
+edition = "2018"
+
+[dependencies]
