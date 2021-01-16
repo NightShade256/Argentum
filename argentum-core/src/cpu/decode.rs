@@ -15,6 +15,20 @@ const R16_GROUP_ONE: [Reg16; 4] = [Reg16::BC, Reg16::DE, Reg16::HL, Reg16::SP];
 /// R16 (group 2)
 const R16_GROUP_TWO: [Reg16; 4] = [Reg16::BC, Reg16::DE, Reg16::HLI, Reg16::HLD];
 
+/// R16 (group 3)
+const R16_GROUP_THR: [Reg16; 4] = [Reg16::BC, Reg16::DE, Reg16::HL, Reg16::AF];
+
+const OPCODE_GROUP_ONE: [fn(&mut Cpu, &mut Bus, Reg8) -> (); 8] = [
+    Cpu::add_r8,
+    Cpu::adc_r8,
+    Cpu::sub_r8,
+    Cpu::sbc_r8,
+    Cpu::and_r8,
+    Cpu::xor_r8,
+    Cpu::or_r8,
+    Cpu::cp_r8,
+];
+
 impl Cpu {
     pub fn decode_and_execute(&mut self, bus: &mut Bus, opcode: u16) {
         match opcode {
@@ -102,6 +116,72 @@ impl Cpu {
                 let value = self.r.get_r8(src, bus);
                 self.r.set_r8(dest, bus, value);
             }
+
+            0x80..=0xBF => {
+                let reg = unsafe { std::mem::transmute((opcode & 0x7) as u8) };
+                let index = (opcode >> 3) as u8;
+
+                // Should I use match with unreachable macro?
+                OPCODE_GROUP_ONE[index as usize](self, bus, reg);
+            }
+
+            0xC0 | 0xC8 | 0xD0 | 0xD8 => {
+                self.conditional_ret(bus, ((opcode >> 3) & 0x3) as u8);
+            }
+
+            0xE0 => {
+                let addr = (0xFF00u16).wrapping_add(self.imm_byte(bus) as u16);
+                bus.write_byte(addr, self.r.a);
+            }
+
+            0xE8 => {
+                let offset = self.imm_byte(bus) as i8 as i16;
+                let sp = self.r.sp;
+
+                self.r.sp = (sp as i16 + offset) as u16;
+
+                self.r.set_zf(false);
+                self.r.set_nf(false);
+                self.r
+                    .set_hf(((sp & 0xF) + (offset as u16 & 0xF)) & 0x10 == 0x10);
+                self.r.set_cf(sp + offset as u16 > 0xFF);
+            }
+
+            0xF0 => {
+                let addr = (0xFF00u16).wrapping_add(self.imm_byte(bus) as u16);
+                self.r.a = bus.read_byte(addr);
+            }
+
+            0xF8 => {
+                let offset = self.imm_byte(bus) as i8 as i16;
+                let sp = self.r.sp;
+
+                self.r.write_rr(Reg16::HL, (sp as i16 + offset) as u16);
+
+                self.r.set_zf(false);
+                self.r.set_nf(false);
+                self.r
+                    .set_hf(((sp & 0xF) + (offset as u16 & 0xF)) & 0x10 == 0x10);
+                self.r.set_cf(sp + offset as u16 > 0xFF);
+            }
+
+            0xC1 | 0xD1 | 0xE1 | 0xF1 => {
+                let reg = R16_GROUP_THR[((opcode >> 4) & 0x3) as usize];
+                let pop = self.pop(bus);
+
+                self.r.write_rr(reg, pop);
+            }
+
+            0xC9 => self.ret(bus),
+            0xD9 => {
+                self.ret(bus);
+                self.ime = true;
+            }
+            0xE9 => {
+                let addr = self.r.read_rr(Reg16::HL);
+                self.jp(addr);
+            }
+            0xF9 => self.r.sp = self.r.read_rr(Reg16::HL),
 
             _ => {}
         }
