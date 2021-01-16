@@ -1,6 +1,8 @@
 //! Contains an implementation of the Sharp SM83 CPU
 //! found inside the Game Boy.
 
+mod decode;
+mod instructions;
 mod registers;
 
 use self::registers::*;
