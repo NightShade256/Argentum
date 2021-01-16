@@ -84,6 +84,25 @@ impl Cpu {
                 self.r.set_r8(r8, bus, value);
             }
 
+            // HALT (will implement later).
+            0x76 => {}
+
+            0x40..=0x75 => {
+                let src = unsafe { std::mem::transmute((opcode & 0x7) as u8) };
+                let dest = unsafe { std::mem::transmute((opcode >> 3) as u8) };
+
+                let value = self.r.get_r8(src, bus);
+                self.r.set_r8(dest, bus, value);
+            }
+
+            0x77..=0x7F => {
+                let src = unsafe { std::mem::transmute((opcode & 0x7) as u8) };
+                let dest = unsafe { std::mem::transmute((opcode >> 3) as u8) };
+
+                let value = self.r.get_r8(src, bus);
+                self.r.set_r8(dest, bus, value);
+            }
+
             _ => {}
         }
     }
