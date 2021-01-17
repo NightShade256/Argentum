@@ -72,7 +72,7 @@ impl Cpu {
 
             // JR (conditional)
             0x20 | 0x28 | 0x30 | 0x38 => {
-                let condition = ((opcode >> 3) & 0x3) as u8;
+                let condition = (opcode >> 3) & 0x3;
                 self.conditional_jr(bus, condition);
             }
 
@@ -132,7 +132,7 @@ impl Cpu {
 
             // INC r8
             0x04 | 0x14 | 0x24 | 0x34 | 0x0C | 0x1C | 0x2C | 0x3C => {
-                let bit_rep = ((opcode >> 3) & 0x7) as u8;
+                let bit_rep = (opcode >> 3) & 0x7;
 
                 let r8 = unsafe { std::mem::transmute(bit_rep) };
                 self.inc_r8(bus, r8);
@@ -140,7 +140,7 @@ impl Cpu {
 
             // DEC r8
             0x05 | 0x15 | 0x25 | 0x35 | 0x0D | 0x1D | 0x2D | 0x3D => {
-                let bit_rep = ((opcode >> 3) & 0x7) as u8;
+                let bit_rep = (opcode >> 3) & 0x7;
 
                 let r8 = unsafe { std::mem::transmute(bit_rep) };
                 self.dec_r8(bus, r8);
@@ -148,7 +148,7 @@ impl Cpu {
 
             // LD r8, u8
             0x06 | 0x16 | 0x26 | 0x36 | 0x0E | 0x1E | 0x2E | 0x3E => {
-                let bit_rep = ((opcode >> 3) & 0x7) as u8;
+                let bit_rep = (opcode >> 3) & 0x7;
 
                 let r8 = unsafe { std::mem::transmute(bit_rep) };
                 let imm = self.imm_byte(bus);
@@ -169,8 +169,8 @@ impl Cpu {
 
             // LD r8, r8
             0x40..=0x7F if opcode != 0x76 => {
-                let src_bit_rep = (opcode & 0x7) as u8;
-                let dest_bit_rep = ((opcode >> 3) & 0x7) as u8;
+                let src_bit_rep = opcode & 0x7;
+                let dest_bit_rep = (opcode >> 3) & 0x7;
 
                 let src = unsafe { std::mem::transmute(src_bit_rep) };
                 let dest = unsafe { std::mem::transmute(dest_bit_rep) };
@@ -181,8 +181,8 @@ impl Cpu {
 
             // ALU A, r8
             0x80..=0xBF => {
-                let bit_rep = (opcode & 0x7) as u8;
-                let index = ((opcode >> 3) & 0x7) as u8 as usize;
+                let bit_rep = opcode & 0x7;
+                let index = ((opcode >> 3) & 0x7) as usize;
 
                 let r8 = unsafe { std::mem::transmute(bit_rep) };
 
@@ -192,7 +192,7 @@ impl Cpu {
 
             // RET (conditional)
             0xC0 | 0xC8 | 0xD0 | 0xD8 => {
-                self.conditional_ret(bus, ((opcode >> 3) & 0x3) as u8);
+                self.conditional_ret(bus, (opcode >> 3) & 0x3);
             }
 
             // LD [FF00 + u8], A
@@ -245,16 +245,26 @@ impl Cpu {
 
             // JP (conditional)
             0xC2 | 0xD2 | 0xCA | 0xDA => {
-                let condition = ((opcode >> 3) & 0x3) as u8;
+                let condition = (opcode >> 3) & 0x3;
                 let addr = self.imm_word(bus);
 
                 self.conditional_jp(addr, condition);
+            }
+
+            0xE2 => {
+                let addr = (0xFF00u16).wrapping_add(self.r.c as u16);
+                bus.write_byte(addr, self.r.a);
             }
 
             // LD [u16], A
             0xEA => {
                 let addr = self.imm_word(bus);
                 bus.write_byte(addr, self.r.a);
+            }
+
+            0xF2 => {
+                let addr = (0xFF00u16).wrapping_add(self.r.c as u16);
+                self.r.a = bus.read_byte(addr);
             }
 
             // LD A, [u16]
@@ -275,8 +285,8 @@ impl Cpu {
 
                 match opcode {
                     0x00..=0x3F => {
-                        let bit_rep = (opcode & 0x7) as u8;
-                        let index = ((opcode >> 3) & 0x7) as u8 as usize;
+                        let bit_rep = opcode & 0x7;
+                        let index = ((opcode >> 3) & 0x7) as usize;
 
                         let r8 = unsafe { std::mem::transmute(bit_rep) };
 
@@ -284,8 +294,8 @@ impl Cpu {
                     }
 
                     0x40..=0x7F => {
-                        let bit_rep = (opcode & 0x7) as u8;
-                        let bit = ((opcode >> 3) & 0x7) as u8;
+                        let bit_rep = opcode & 0x7;
+                        let bit = (opcode >> 3) & 0x7;
 
                         let r8 = unsafe { std::mem::transmute(bit_rep) };
 
@@ -293,8 +303,8 @@ impl Cpu {
                     }
 
                     0x80..=0xBF => {
-                        let bit_rep = (opcode & 0x7) as u8;
-                        let bit = ((opcode >> 3) & 0x7) as u8;
+                        let bit_rep = opcode & 0x7;
+                        let bit = (opcode >> 3) & 0x7;
 
                         let r8 = unsafe { std::mem::transmute(bit_rep) };
 
@@ -302,8 +312,8 @@ impl Cpu {
                     }
 
                     0xC0..=0xFF => {
-                        let bit_rep = (opcode & 0x7) as u8;
-                        let bit = ((opcode >> 3) & 0x7) as u8;
+                        let bit_rep = opcode & 0x7;
+                        let bit = (opcode >> 3) & 0x7;
 
                         let r8 = unsafe { std::mem::transmute(bit_rep) };
 
@@ -320,7 +330,7 @@ impl Cpu {
 
             // CALL (condition)
             0xC4 | 0xCC | 0xD4 | 0xDC => {
-                let condition = ((opcode >> 3) & 0x3) as u8;
+                let condition = (opcode >> 3) & 0x3;
                 self.conditional_call(bus, condition);
             }
 
@@ -339,7 +349,7 @@ impl Cpu {
 
             // ALU A, u8
             0xC6 | 0xD6 | 0xE6 | 0xF6 | 0xCE | 0xDE | 0xEE | 0xFE => {
-                let index = ((opcode >> 3) & 0x7) as u8 as usize;
+                let index = ((opcode >> 3) & 0x7) as usize;
                 let value = self.imm_byte(bus);
 
                 OPCODE_GROUP_TWO[index](self, value);
@@ -347,7 +357,16 @@ impl Cpu {
 
             // RSTs
             // TODO
-            0xC7 | 0xD7 | 0xE7 | 0xF7 | 0xCF | 0xDF | 0xEF | 0xFF => {}
+            0xC7 | 0xD7 | 0xE7 | 0xF7 | 0xCF | 0xDF | 0xEF | 0xFF => {
+                // Construct jump vector.
+                let vec = (opcode & 0b0011_1000) as u16;
+
+                // Push current PC onto the stack.
+                self.push(bus, self.r.pc);
+
+                // Jump to the vector.
+                self.r.pc = vec;
+            }
 
             _ => {
                 println!("UNHANDLED OPCODE {:#04X}.", opcode);
