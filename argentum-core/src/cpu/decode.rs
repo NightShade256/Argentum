@@ -20,6 +20,17 @@ const R16_GROUP_TWO: [Reg16; 4] = [Reg16::BC, Reg16::DE, Reg16::HLI, Reg16::HLD]
 /// R16 (group 3)
 const R16_GROUP_THR: [Reg16; 4] = [Reg16::BC, Reg16::DE, Reg16::HL, Reg16::AF];
 
+const OPCODE_GROUP_ONE: [fn(&mut Cpu) -> (); 8] = [
+    Cpu::rlca,
+    Cpu::rrca,
+    Cpu::rla,
+    Cpu::rra,
+    Cpu::daa,
+    Cpu::cpl,
+    Cpu::scf,
+    Cpu::ccf,
+];
+
 /// ALU OpCodes group.
 const OPCODE_GROUP_TWO: [fn(&mut Cpu, u8) -> (); 8] = [
     Cpu::add_r8,
@@ -145,6 +156,13 @@ impl Cpu {
                 self.r.write_r8(r8, bus, imm);
             }
 
+            // MISC OPS
+            0x07 | 0x17 | 0x27 | 0x37 | 0x0F | 0x1F | 0x2F | 0x3F => {
+                let index = ((opcode >> 3) & 0x7) as usize;
+
+                OPCODE_GROUP_ONE[index](self);
+            }
+
             // HALT
             // TODO
             0x76 => {}
@@ -224,6 +242,14 @@ impl Cpu {
 
             // LD SP, HL
             0xF9 => self.r.sp = self.r.read_r16(Reg16::HL),
+
+            // JP (conditional)
+            0xC2 | 0xD2 | 0xCA | 0xDA => {
+                let condition = ((opcode >> 3) & 0x3) as u8;
+                let addr = self.imm_word(bus);
+
+                self.conditional_jp(addr, condition);
+            }
 
             // LD [u16], A
             0xEA => {
@@ -318,6 +344,10 @@ impl Cpu {
 
                 OPCODE_GROUP_TWO[index](self, value);
             }
+
+            // RSTs
+            // TODO
+            0xC7 | 0xD7 | 0xE7 | 0xF7 | 0xCF | 0xDF | 0xEF | 0xFF => {}
 
             _ => {
                 println!("UNHANDLED OPCODE {:#04X}.", opcode);

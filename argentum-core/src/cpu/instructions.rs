@@ -180,7 +180,7 @@ impl Cpu {
     /// ADC A, r8
     pub fn adc_r8(&mut self, r8v: u8) {
         let a = self.r.a;
-        let f = if self.r.get_cf() { 1 } else { 0 };
+        let f = self.r.get_cf() as u8;
         let result = a.wrapping_add(r8v).wrapping_add(f);
 
         self.r.a = result;
@@ -207,7 +207,7 @@ impl Cpu {
     /// SBC A, r8
     pub fn sbc_r8(&mut self, r8v: u8) {
         let a = self.r.a;
-        let f = if self.r.get_cf() { 1 } else { 0 };
+        let f = self.r.get_cf() as u8;
         let result = a.wrapping_sub(r8v).wrapping_sub(f);
 
         self.r.a = result;
@@ -269,7 +269,7 @@ impl Cpu {
         self.r.set_zf(result == 0);
         self.r.set_nf(false);
         self.r.set_hf(false);
-        self.r.set_cf(((r8v >> 7) & 0x1) == 1);
+        self.r.set_cf((r8v & 0x80) != 0);
     }
 
     // RRC r8
@@ -282,13 +282,13 @@ impl Cpu {
         self.r.set_zf(result == 0);
         self.r.set_nf(false);
         self.r.set_hf(false);
-        self.r.set_cf((r8v & 0x1) == 1);
+        self.r.set_cf((r8v & 0x01) != 0);
     }
 
     // RL r8
     pub fn rl_r8(&mut self, bus: &mut Bus, r8: Reg8) {
         let r8v = self.r.read_r8(r8, bus);
-        let carry = if self.r.get_cf() { 1 } else { 0 };
+        let carry = self.r.get_cf() as u8;
         let result = (r8v << 1) | carry;
 
         self.r.write_r8(r8, bus, result);
@@ -296,13 +296,13 @@ impl Cpu {
         self.r.set_zf(result == 0);
         self.r.set_nf(false);
         self.r.set_hf(false);
-        self.r.set_cf(((r8v >> 7) & 0x1) == 1);
+        self.r.set_cf((r8v & 0x80) != 0);
     }
 
     // RR r8
     pub fn rr_r8(&mut self, bus: &mut Bus, r8: Reg8) {
         let r8v = self.r.read_r8(r8, bus);
-        let carry = if self.r.get_cf() { 1 } else { 0 };
+        let carry = self.r.get_cf() as u8;
         let result = (r8v >> 1) | (carry << 7);
 
         self.r.write_r8(r8, bus, result);
@@ -310,20 +310,20 @@ impl Cpu {
         self.r.set_zf(result == 0);
         self.r.set_nf(false);
         self.r.set_hf(false);
-        self.r.set_cf((r8v & 0x1) == 1);
+        self.r.set_cf((r8v & 0x01) != 0);
     }
 
     // SLA r8
     pub fn sla_r8(&mut self, bus: &mut Bus, r8: Reg8) {
         let r8v = self.r.read_r8(r8, bus);
-        let result = (r8v << 1) & 0xFE;
+        let result = r8v << 1;
 
         self.r.write_r8(r8, bus, result);
 
         self.r.set_zf(result == 0);
         self.r.set_nf(false);
         self.r.set_hf(false);
-        self.r.set_cf(((r8v >> 7) & 0x1) == 1);
+        self.r.set_cf((r8v & 0x80) != 0);
     }
 
     // SRA r8
@@ -336,7 +336,7 @@ impl Cpu {
         self.r.set_zf(result == 0);
         self.r.set_nf(false);
         self.r.set_hf(false);
-        self.r.set_cf((r8v & 0x1) == 1);
+        self.r.set_cf((r8v & 0x01) != 0);
     }
 
     // SWAP r8
@@ -362,14 +362,14 @@ impl Cpu {
         self.r.set_zf(result == 0);
         self.r.set_nf(false);
         self.r.set_hf(false);
-        self.r.set_cf((r8v & 0x1) == 1);
+        self.r.set_cf((r8v & 0x01) != 0);
     }
 
     // BIT bit, r8
     pub fn bit_r8(&mut self, bus: &mut Bus, r8: Reg8, bit: u8) {
-        let r8v = self.r.read_r8(r8, bus);
+        let r8v = self.r.read_r8(r8, bus) & (1 << bit);
 
-        self.r.set_zf(((r8v >> bit) & 0x1) == 0);
+        self.r.set_zf(r8v == 0);
         self.r.set_nf(false);
         self.r.set_hf(true);
     }
@@ -385,7 +385,88 @@ impl Cpu {
 
     // SET bit, r8
     pub fn set_r8(&mut self, bus: &mut Bus, r8: Reg8, bit: u8) {
-        let r8v = self.r.read_r8(r8, bus);
-        self.r.write_r8(r8, bus, r8v | (1 << bit));
+        let r8v = self.r.read_r8(r8, bus) | (1 << bit);
+        self.r.write_r8(r8, bus, r8v);
+    }
+
+    /// RLCA
+    pub fn rlca(&mut self) {
+        let r8v = self.r.a;
+        let result = r8v.rotate_left(1);
+
+        self.r.a = result;
+
+        self.r.set_zf(result == 0);
+        self.r.set_nf(false);
+        self.r.set_hf(false);
+        self.r.set_cf((r8v & 0x80) != 0);
+    }
+
+    /// RLCA
+    pub fn rrca(&mut self) {
+        let r8v = self.r.a;
+        let result = r8v.rotate_right(1);
+
+        self.r.a = result;
+
+        self.r.set_zf(result == 0);
+        self.r.set_nf(false);
+        self.r.set_hf(false);
+        self.r.set_cf((r8v & 0x01) != 0);
+    }
+
+    /// RLA
+    pub fn rla(&mut self) {
+        let r8v = self.r.a;
+        let carry = self.r.get_cf() as u8;
+        let result = (r8v << 1) | carry;
+
+        self.r.a = result;
+
+        self.r.set_zf(result == 0);
+        self.r.set_nf(false);
+        self.r.set_hf(false);
+        self.r.set_cf((r8v & 0x80) != 0);
+    }
+
+    /// RRA
+    pub fn rra(&mut self) {
+        let r8v = self.r.a;
+        let carry = self.r.get_cf() as u8;
+        let result = (r8v >> 1) | (carry << 7);
+
+        self.r.a = result;
+
+        self.r.set_zf(result == 0);
+        self.r.set_nf(false);
+        self.r.set_hf(false);
+        self.r.set_cf((r8v & 0x01) != 0);
+    }
+
+    /// TODO
+    pub fn daa(&mut self) {}
+
+    /// CPL
+    pub fn cpl(&mut self) {
+        self.r.a = !self.r.a;
+
+        self.r.set_nf(true);
+        self.r.set_hf(true);
+    }
+
+    /// SCF
+    pub fn scf(&mut self) {
+        self.r.set_nf(false);
+        self.r.set_hf(false);
+        self.r.set_cf(true);
+    }
+
+    /// CCF
+    pub fn ccf(&mut self) {
+        let carry = self.r.get_cf();
+
+        self.r.set_nf(false);
+        self.r.set_hf(false);
+        self.r.set_cf(!carry);
     }
 }
