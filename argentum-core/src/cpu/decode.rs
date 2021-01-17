@@ -202,8 +202,17 @@ impl Cpu {
             }
 
             // ADD SP, i8
-            // TODO
-            0xE8 => {}
+            0xE8 => {
+                let offset = self.imm_byte(bus) as i8 as i16 as u16;
+                let sp = self.r.sp;
+
+                self.r.sp = sp.wrapping_add(offset);
+
+                self.r.set_zf(false);
+                self.r.set_nf(false);
+                self.r.set_hf((offset & 0xF) + (sp & 0xF) > 0xF);
+                self.r.set_cf((offset & 0xFF) + (sp & 0xFF) > 0xFF);
+            }
 
             // LD A, [FF00 + u8]
             0xF0 => {
@@ -212,8 +221,17 @@ impl Cpu {
             }
 
             // LD HL, SP + i8
-            // TODO
-            0xF8 => {}
+            0xF8 => {
+                let offset = self.imm_byte(bus) as i8 as i16 as u16;
+                let sp = self.r.sp;
+
+                self.r.write_r16(Reg16::HL, sp.wrapping_add(offset));
+
+                self.r.set_zf(false);
+                self.r.set_nf(false);
+                self.r.set_hf((offset & 0xF) + (sp & 0xF) > 0xF);
+                self.r.set_cf((offset & 0xFF) + (sp & 0xFF) > 0xFF);
+            }
 
             // POP r16
             0xC1 | 0xD1 | 0xE1 | 0xF1 => {
@@ -356,7 +374,6 @@ impl Cpu {
             }
 
             // RSTs
-            // TODO
             0xC7 | 0xD7 | 0xE7 | 0xF7 | 0xCF | 0xDF | 0xEF | 0xFF => {
                 // Construct jump vector.
                 let vec = (opcode & 0b0011_1000) as u16;
