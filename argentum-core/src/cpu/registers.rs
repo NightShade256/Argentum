@@ -32,6 +32,9 @@ pub struct Registers {
 
     // Stack pointer.
     pub sp: u16,
+
+    // Program pointer.
+    pub pc: u16,
 }
 
 /// Enumerates all 16 bit registers.
@@ -47,10 +50,10 @@ pub enum Reg16 {
     HLD, // HL, post dec.
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum Reg8 {
-    B,
+    B = 0,
     C,
     D,
     E,
@@ -73,14 +76,15 @@ impl Registers {
             l: 0,
             f: Flags::empty(),
             sp: 0,
+            pc: 0,
         }
     }
 
     /// Read the value of a 16 bit register.
-    pub fn read_rr(&mut self, reg: Reg16) -> u16 {
+    pub fn read_r16(&mut self, r16: Reg16) -> u16 {
         use Reg16::*;
 
-        match reg {
+        match r16 {
             AF => ((self.a as u16) << 8) | self.f.bits() as u16,
             BC => ((self.b as u16) << 8) | self.c as u16,
             DE => ((self.d as u16) << 8) | self.e as u16,
@@ -89,14 +93,14 @@ impl Registers {
 
             HLI => {
                 let value = ((self.h as u16) << 8) | self.l as u16;
-                self.write_rr(Reg16::HL, value.wrapping_add(1));
+                self.write_r16(Reg16::HL, value.wrapping_add(1));
 
                 value
             }
 
             HLD => {
                 let value = ((self.h as u16) << 8) | self.l as u16;
-                self.write_rr(Reg16::HL, value.wrapping_sub(1));
+                self.write_r16(Reg16::HL, value.wrapping_sub(1));
 
                 value
             }
@@ -104,10 +108,10 @@ impl Registers {
     }
 
     /// Write a value to a 16 bit register.
-    pub fn write_rr(&mut self, reg: Reg16, value: u16) {
+    pub fn write_r16(&mut self, r16: Reg16, value: u16) {
         use Reg16::*;
 
-        match reg {
+        match r16 {
             AF => {
                 self.a = (value >> 8) as u8;
                 self.f = Flags::from_bits_truncate(value as u8);
@@ -135,7 +139,7 @@ impl Registers {
     }
 
     #[inline]
-    pub fn get_r8(&mut self, r8: Reg8, bus: &Bus) -> u8 {
+    pub fn read_r8(&mut self, r8: Reg8, bus: &Bus) -> u8 {
         use Reg8::*;
 
         match r8 {
@@ -147,12 +151,12 @@ impl Registers {
             L => self.l,
             A => self.a,
 
-            HL => bus.read_byte(self.read_rr(Reg16::HL)),
+            HL => bus.read_byte(self.read_r16(Reg16::HL)),
         }
     }
 
     #[inline]
-    pub fn set_r8(&mut self, r8: Reg8, bus: &mut Bus, value: u8) {
+    pub fn write_r8(&mut self, r8: Reg8, bus: &mut Bus, value: u8) {
         use Reg8::*;
 
         match r8 {
@@ -164,7 +168,7 @@ impl Registers {
             L => self.l = value,
             A => self.a = value,
 
-            HL => bus.write_byte(self.read_rr(Reg16::HL), value),
+            HL => bus.write_byte(self.read_r16(Reg16::HL), value),
         }
     }
 

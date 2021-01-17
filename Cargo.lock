@@ -10,6 +10,9 @@ dependencies = [
 [[package]]
 name = "argentum-gb"
 version = "0.1.0"
+dependencies = [
+ "argentum-core",
+]
 
 [[package]]
 name = "bitflags"

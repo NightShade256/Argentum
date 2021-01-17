@@ -10,3 +10,4 @@ authors = ["Anish Jewalikar <anishjewalikar@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+argentum-core = { path = "./argentum-core" }
