@@ -164,8 +164,7 @@ impl Cpu {
             }
 
             // HALT
-            // TODO
-            0x76 => {}
+            0x76 => self.halted = true,
 
             // LD r8, r8
             0x40..=0x7F if opcode != 0x76 => {
@@ -385,10 +384,8 @@ impl Cpu {
                 self.r.pc = vec;
             }
 
-            _ => {
-                println!("UNHANDLED OPCODE {:#04X}.", opcode);
-                std::process::exit(0);
-            }
+            // Invalid opcodes.
+            _ => {}
         }
 
         // Output text written to serial port by Blargg's tests.

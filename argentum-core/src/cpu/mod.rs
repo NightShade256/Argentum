@@ -13,10 +13,13 @@ use crate::bus::Bus;
 /// Implementation of the Sharp SM83.
 pub struct Cpu {
     /// Set of all the registers.
-    r: Registers,
+    pub r: Registers,
 
     /// Interrupt Master Enable switch.
-    ime: bool,
+    pub ime: bool,
+
+    /// Is the CPU currently halted or running?
+    pub halted: bool,
 }
 
 /// Formatted similar to wheremyfoodat's (peach's) logs.
@@ -32,7 +35,7 @@ impl Display for Cpu {
         );
 
         let reg_two = format!(
-            "E: {:02X} H: {:02X} L: {:02X} SP: {:04X} PC: {:04X}",
+            "E: {:02X} H: {:02X} L: {:02X} SP: {:04X} PC: 00:{:04X}",
             self.r.e, self.r.h, self.r.l, self.r.sp, self.r.pc,
         );
 
@@ -46,6 +49,7 @@ impl Cpu {
         Self {
             r: Registers::new(),
             ime: false,
+            halted: false,
         }
     }
 

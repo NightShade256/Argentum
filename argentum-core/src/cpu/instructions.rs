@@ -167,14 +167,14 @@ impl Cpu {
     /// ADD A, r8
     pub fn add_r8(&mut self, r8v: u8) {
         let a = self.r.a;
-        let (result, carry) = a.overflowing_add(r8v);
+        let result = a.wrapping_add(r8v);
 
         self.r.a = result;
 
         self.r.set_zf(result == 0);
         self.r.set_nf(false);
         self.r.set_hf((a & 0xF) + (r8v & 0xF) > 0xF);
-        self.r.set_cf(carry);
+        self.r.set_cf((a as u16 + r8v as u16) > 0xFF);
     }
 
     /// ADC A, r8
@@ -194,14 +194,14 @@ impl Cpu {
     /// SUB A, r8
     pub fn sub_r8(&mut self, r8v: u8) {
         let a = self.r.a;
-        let (result, carry) = a.overflowing_sub(r8v);
+        let result = self.r.a.wrapping_sub(r8v);
 
         self.r.a = result;
 
         self.r.set_zf(result == 0);
         self.r.set_nf(true);
-        self.r.set_hf(a.trailing_zeros() >= 4);
-        self.r.set_cf(carry);
+        self.r.set_hf((a & 0xF) < (r8v & 0xF));
+        self.r.set_cf((a as u16) < (r8v as u16));
     }
 
     /// SBC A, r8
@@ -214,7 +214,7 @@ impl Cpu {
 
         self.r.set_zf(result == 0);
         self.r.set_nf(true);
-        self.r.set_hf(a.trailing_zeros() >= 4);
+        self.r.set_hf((a & 0xF) < ((r8v & 0xF) + (f & 0xF)));
         self.r.set_cf((a as u16) < (r8v as u16 + f as u16));
     }
 
@@ -250,13 +250,12 @@ impl Cpu {
 
     /// CP A, r8
     pub fn cp_r8(&mut self, r8v: u8) {
-        let a = self.r.a;
-        let (result, carry) = a.overflowing_sub(r8v);
+        let result = self.r.a.wrapping_sub(r8v);
 
         self.r.set_zf(result == 0);
         self.r.set_nf(true);
-        self.r.set_hf(a.trailing_zeros() >= 4);
-        self.r.set_cf(carry);
+        self.r.set_hf((self.r.a & 0xF) < (r8v & 0xF));
+        self.r.set_cf((self.r.a as u16) < (r8v as u16));
     }
 
     // RLC r8
@@ -342,7 +341,7 @@ impl Cpu {
     // SWAP r8
     pub fn swap_r8(&mut self, bus: &mut Bus, r8: Reg8) {
         let r8v = self.r.read_r8(r8, bus);
-        let result = r8v.reverse_bits();
+        let result = (r8v << 4) | (r8v >> 4);
 
         self.r.write_r8(r8, bus, result);
 
@@ -396,7 +395,7 @@ impl Cpu {
 
         self.r.a = result;
 
-        self.r.set_zf(result == 0);
+        self.r.set_zf(false);
         self.r.set_nf(false);
         self.r.set_hf(false);
         self.r.set_cf((r8v & 0x80) != 0);
@@ -409,7 +408,7 @@ impl Cpu {
 
         self.r.a = result;
 
-        self.r.set_zf(result == 0);
+        self.r.set_zf(false);
         self.r.set_nf(false);
         self.r.set_hf(false);
         self.r.set_cf((r8v & 0x01) != 0);
@@ -423,7 +422,7 @@ impl Cpu {
 
         self.r.a = result;
 
-        self.r.set_zf(result == 0);
+        self.r.set_zf(false);
         self.r.set_nf(false);
         self.r.set_hf(false);
         self.r.set_cf((r8v & 0x80) != 0);
@@ -437,14 +436,42 @@ impl Cpu {
 
         self.r.a = result;
 
-        self.r.set_zf(result == 0);
+        self.r.set_zf(false);
         self.r.set_nf(false);
         self.r.set_hf(false);
         self.r.set_cf((r8v & 0x01) != 0);
     }
 
-    /// TODO
-    pub fn daa(&mut self) {}
+    /// DAA
+    /// Probably the most involved instruction of them
+    /// all.
+    pub fn daa(&mut self) {
+        let mut a = self.r.a;
+
+        if self.r.get_nf() {
+            if self.r.get_cf() {
+                a = a.wrapping_add(0xA0);
+                self.r.set_cf(true);
+            }
+
+            if self.r.get_hf() {
+                a = a.wrapping_add(0xFA);
+            }
+        } else {
+            if self.r.get_cf() || (a > 0x99) {
+                a = a.wrapping_add(0x60);
+                self.r.set_cf(true);
+            }
+
+            if self.r.get_hf() || ((a & 0xF) > 0x9) {
+                a = a.wrapping_add(0x06);
+            }
+        }
+
+        self.r.a = a;
+        self.r.set_zf(self.r.a == 0);
+        self.r.set_hf(false);
+    }
 
     /// CPL
     pub fn cpl(&mut self) {
