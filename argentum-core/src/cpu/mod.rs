@@ -48,6 +48,9 @@ pub struct Cpu {
 
     /// Is the CPU currently halted or running?
     pub halted: bool,
+
+    /// The cycles it took to execute ONLY the current instrucion.
+    pub cycles: u32,
 }
 
 /// Formatted similar to wheremyfoodat's emulation logs.
@@ -78,6 +81,7 @@ impl Cpu {
             r: Registers::new(),
             ime: false,
             halted: false,
+            cycles: 0,
         }
     }
 
@@ -107,5 +111,76 @@ impl Cpu {
         self.r.pc += 2;
 
         value
+    }
+
+    /// Handle pending interrupts.
+    fn handle_interrupts(&mut self, bus: &mut Bus) {
+        let interrupts = bus.ie_flag & bus.if_flag;
+
+        // If there are pending interrupts, CPU should be
+        // back up and running.
+        if interrupts != 0 {
+            self.halted = false;
+        }
+
+        // If IME is not enabled, we don't service the interrupt.
+        if !self.ime {
+            return;
+        }
+
+        if interrupts != 0 {
+            for i in 0..5 {
+                if (bus.ie_flag & (1 << i) != 0) && (bus.if_flag & (1 << i) != 0) {
+                    // Disable the interrupt in IF.
+                    bus.if_flag &= !(1 << i);
+
+                    // Disable IME.
+                    self.ime = false;
+
+                    // Jump to the the service address.
+                    self.push(bus, self.r.pc);
+
+                    // 0x40 - VBLANK
+                    // 0x48 - LCD STAT
+                    // 0x50 - Timer
+                    // 0x58 - Serial
+                    // 0x60 - Joypad
+                    self.r.pc = 0x40 + (0x08 * i);
+
+                    // As in Pan Docs, ISR takes 5 M cycles.
+                    self.cycles += 20;
+
+                    // Service only one interrupt at a time.
+                    break;
+                }
+            }
+        }
+    }
+
+    /// Execute one opcode and return the amount of T-cycles
+    /// it took to run it.
+    pub fn execute_opcode(&mut self, bus: &mut Bus) -> u32 {
+        self.cycles = 0;
+
+        self.handle_interrupts(bus);
+
+        if self.halted {
+            self.cycles += 4;
+        } else {
+            // Fetch opcode.
+            let opcode = self.imm_byte(bus);
+
+            // Add correct amount of cycles.
+            self.cycles += if opcode == 0xCB {
+                PREFIXED_TIMINGS[bus.read_byte(self.r.pc) as usize]
+            } else {
+                UNPREFIXED_TIMINGS[opcode as usize]
+            } * 4;
+
+            // Decode and execute the opcode.
+            self.decode_and_execute(bus, opcode);
+        }
+
+        self.cycles
     }
 }

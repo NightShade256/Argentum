@@ -70,6 +70,7 @@ impl Cpu {
 
         if is_satisfied {
             self.jp(addr);
+            self.cycles += 4;
         }
     }
 
@@ -84,6 +85,7 @@ impl Cpu {
 
         if is_satisfied {
             self.ret(bus);
+            self.cycles += 12;
         }
     }
 
@@ -106,6 +108,7 @@ impl Cpu {
         if is_satisfied {
             self.push(bus, self.r.pc);
             self.r.pc = addr;
+            self.cycles += 12;
         }
     }
 
@@ -125,6 +128,7 @@ impl Cpu {
 
         if is_satisfied {
             self.r.pc = (self.r.pc as i16 + offset) as u16;
+            self.cycles += 4;
         }
     }
 
