@@ -5,6 +5,7 @@
 use bitflags::bitflags;
 
 use crate::bus::Bus;
+use crate::common::MemInterface;
 
 bitflags! {
     pub struct Flags: u8 {

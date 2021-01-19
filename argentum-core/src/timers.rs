@@ -1,5 +1,7 @@
 //! Implementation of the Game Boy timer system.
 
+use crate::common::MemInterface;
+
 /// All the frequencies at which TIMA can tick.
 const TIMA_FREQUENCY: [u32; 4] = [1024, 16, 64, 256];
 
@@ -23,21 +25,9 @@ pub struct Timers {
     tac: u8,
 }
 
-impl Timers {
-    /// Create a new `Timer` instance.
-    pub fn new() -> Self {
-        Self {
-            div_cycles: 0,
-            tima_cycles: 0,
-            div: 0,
-            tima: 0,
-            tma: 0,
-            tac: 0,
-        }
-    }
-
+impl MemInterface for Timers {
     /// Read a byte from the given address.
-    pub fn read(&self, addr: u16) -> u8 {
+    fn read_byte(&self, addr: u16) -> u8 {
         match addr {
             0xFF04 => self.div,
             0xFF05 => self.tima,
@@ -49,7 +39,7 @@ impl Timers {
     }
 
     /// Write a byte to the given address.
-    pub fn write(&mut self, addr: u16, value: u8) {
+    fn write_byte(&mut self, addr: u16, value: u8) {
         match addr {
             // Attempting to write anything to DIV
             // will result in it being reset to 0x00.
@@ -59,6 +49,20 @@ impl Timers {
             0xFF07 => self.tac = value,
 
             _ => unreachable!(),
+        }
+    }
+}
+
+impl Timers {
+    /// Create a new `Timer` instance.
+    pub fn new() -> Self {
+        Self {
+            div_cycles: 0,
+            tima_cycles: 0,
+            div: 0,
+            tima: 0,
+            tma: 0,
+            tac: 0,
         }
     }
 

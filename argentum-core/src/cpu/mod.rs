@@ -9,6 +9,7 @@ mod registers;
 
 use self::registers::*;
 use crate::bus::Bus;
+use crate::common::MemInterface;
 
 // The timing information found below is taken from the emulator
 // Purple Boy written by Kappamalone, [https://github.com/Kappamalone/PurpleBoy]
