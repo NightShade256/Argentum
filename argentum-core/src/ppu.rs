@@ -36,6 +36,7 @@ pub struct Ppu {
 impl MemInterface for Ppu {
     fn read_byte(&self, addr: u16) -> u8 {
         match addr {
+            0x8000..=0x9FFF => self.vram[(addr - 0x8000) as usize],
             0xFF40 => self.lcdc,
             0xFF41 => self.stat,
             0xFF44 => self.ly,
@@ -46,6 +47,7 @@ impl MemInterface for Ppu {
 
     fn write_byte(&mut self, addr: u16, value: u8) {
         match addr {
+            0x8000..=0x9FFF => self.vram[(addr - 0x8000) as usize] = value,
             0xFF40 => self.lcdc = value,
             0xFF41 => self.stat = (value & 0xFC) | (self.stat & 0x07),
             0xFF44 => {}

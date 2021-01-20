@@ -25,6 +25,9 @@ pub struct Bus {
 impl MemInterface for Bus {
     fn read_byte(&self, addr: u16) -> u8 {
         match addr {
+            // Video RAM.
+            0x8000..=0x9FFF => self.ppu.read_byte(addr),
+
             // Timer IO.
             0xFF04..=0xFF07 => self.timers.read_byte(addr),
 
@@ -42,6 +45,9 @@ impl MemInterface for Bus {
     /// Write a byte to the specified address.
     fn write_byte(&mut self, addr: u16, value: u8) {
         match addr {
+            // Video RAM.
+            0x8000..=0x9FFF => self.ppu.write_byte(addr, value),
+
             // Timer IO.
             0xFF04..=0xFF07 => self.timers.write_byte(addr, value),
 
