@@ -1,6 +1,7 @@
 //! Contains implementation of the Game Boy memory bus interface.
 
 use crate::common::MemInterface;
+use crate::ppu::Ppu;
 use crate::timers::Timers;
 
 /// The Game Boy memory bus.
@@ -10,6 +11,9 @@ pub struct Bus {
 
     // Interface to timers. (DIV, TIMA & co).
     timers: Timers,
+
+    // The PPU itself.
+    ppu: Ppu,
 
     // IF flag, mapped to 0xFF0F.
     pub if_flag: u8,
@@ -26,8 +30,7 @@ impl MemInterface for Bus {
 
             0xFF0F => self.if_flag,
 
-            // Stub LY to 0x90 temporary.
-            0xFF44 => 0x90,
+            0xFF40 | 0xFF41 | 0xFF44 => self.ppu.read_byte(addr),
 
             0xFFFF => self.ie_flag,
 
@@ -43,8 +46,7 @@ impl MemInterface for Bus {
 
             0xFF0F => self.if_flag = value,
 
-            // Stub LY to 0x90 temporary.
-            0xFF44 => {}
+            0xFF40 | 0xFF41 => self.ppu.write_byte(addr, value),
 
             0xFFFF => self.ie_flag = value,
 
@@ -64,6 +66,7 @@ impl Bus {
         Self {
             memory,
             timers: Timers::new(),
+            ppu: Ppu::new(),
             if_flag: 0,
             ie_flag: 0,
         }
@@ -72,5 +75,6 @@ impl Bus {
     /// Tick all the components on the bus by the given T-cycles.
     pub fn tick_components(&mut self, t_elapsed: u32) {
         self.timers.tick(t_elapsed, &mut self.if_flag);
+        self.ppu.tick(t_elapsed);
     }
 }

@@ -1,5 +1,7 @@
 //! Contains implementation of the Game Boy PPU.
 
+use crate::common::MemInterface;
+
 pub enum PpuModes {
     HBlank,
     VBlank,
@@ -8,8 +10,15 @@ pub enum PpuModes {
 }
 
 pub struct Ppu {
+    /// 8 KB VRAM
+    /// Mapped to 0x8000 to 0x9FFF.
+    vram: Box<[u8; 0x2000]>,
+
     /// The current scanline the PPU is rendering.
     ly: u8,
+
+    /// The LCD control register.
+    lcdc: u8,
 
     /// LCD status register.
     stat: u8,
@@ -19,16 +28,43 @@ pub struct Ppu {
 
     /// Total cycles ticked under the current mode.
     total_cycles: u32,
+
+    /// RGBA32 framebuffer, to be rendered by the frontend.
+    framebuffer: Box<[u8; 160 * 144 * 4]>,
+}
+
+impl MemInterface for Ppu {
+    fn read_byte(&self, addr: u16) -> u8 {
+        match addr {
+            0xFF40 => self.lcdc,
+            0xFF41 => self.stat,
+            0xFF44 => self.ly,
+
+            _ => unreachable!(),
+        }
+    }
+
+    fn write_byte(&mut self, addr: u16, value: u8) {
+        match addr {
+            0xFF40 => self.lcdc = value,
+            0xFF41 => self.stat = (value & 0xFC) | (self.stat & 0x07),
+
+            _ => unreachable!(),
+        }
+    }
 }
 
 impl Ppu {
     /// Create a new `Ppu` instance.
     pub fn new() -> Self {
         Self {
+            vram: Box::new([0; 0x2000]),
             ly: 0,
+            lcdc: 0,
             stat: 0,
             current_mode: PpuModes::OamSearch,
             total_cycles: 0,
+            framebuffer: Box::new([0; 160 * 144 * 4]),
         }
     }
 
@@ -100,4 +136,7 @@ impl Ppu {
             _ => {}
         }
     }
+
+    // For now it just renders the BG map as it is.
+    pub fn render_background(&mut self) {}
 }
