@@ -48,6 +48,7 @@ impl MemInterface for Ppu {
         match addr {
             0xFF40 => self.lcdc = value,
             0xFF41 => self.stat = (value & 0xFC) | (self.stat & 0x07),
+            0xFF44 => {}
 
             _ => unreachable!(),
         }

@@ -28,10 +28,11 @@ impl MemInterface for Bus {
             // Timer IO.
             0xFF04..=0xFF07 => self.timers.read_byte(addr),
 
-            0xFF0F => self.if_flag,
-
+            // PPU IO.
             0xFF40 | 0xFF41 | 0xFF44 => self.ppu.read_byte(addr),
 
+            // Interrupts.
+            0xFF0F => self.if_flag,
             0xFFFF => self.ie_flag,
 
             _ => self.memory[addr as usize],
@@ -44,10 +45,11 @@ impl MemInterface for Bus {
             // Timer IO.
             0xFF04..=0xFF07 => self.timers.write_byte(addr, value),
 
+            // PPU IO.
+            0xFF40 | 0xFF41 | 0xFF44 => self.ppu.write_byte(addr, value),
+
+            // Interrupts.
             0xFF0F => self.if_flag = value,
-
-            0xFF40 | 0xFF41 => self.ppu.write_byte(addr, value),
-
             0xFFFF => self.ie_flag = value,
 
             _ => self.memory[addr as usize] = value,
