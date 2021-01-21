@@ -13,7 +13,7 @@ pub struct Bus {
     timers: Timers,
 
     // The PPU itself.
-    ppu: Ppu,
+    pub ppu: Ppu,
 
     // IF flag, mapped to 0xFF0F.
     pub if_flag: u8,
