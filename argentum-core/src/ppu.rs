@@ -23,6 +23,15 @@ pub struct Ppu {
     /// LCD status register.
     stat: u8,
 
+    /// Scroll Y register.
+    scy: u8,
+
+    /// Scroll X register.
+    scx: u8,
+
+    /// Background pallete data.
+    bgp: u8,
+
     /// The current mode the PPU is in.
     current_mode: PpuModes,
 
@@ -39,7 +48,10 @@ impl MemInterface for Ppu {
             0x8000..=0x9FFF => self.vram[(addr - 0x8000) as usize],
             0xFF40 => self.lcdc,
             0xFF41 => self.stat,
+            0xFF42 => self.scy,
+            0xFF43 => self.scx,
             0xFF44 => self.ly,
+            0xFF47 => self.bgp,
 
             _ => unreachable!(),
         }
@@ -50,7 +62,10 @@ impl MemInterface for Ppu {
             0x8000..=0x9FFF => self.vram[(addr - 0x8000) as usize] = value,
             0xFF40 => self.lcdc = value,
             0xFF41 => self.stat = (value & 0xFC) | (self.stat & 0x07),
+            0xFF42 => self.scy = value,
+            0xFF43 => self.scx = value,
             0xFF44 => {}
+            0xFF47 => self.bgp = value,
 
             _ => unreachable!(),
         }
@@ -65,6 +80,9 @@ impl Ppu {
             ly: 0,
             lcdc: 0,
             stat: 0,
+            scy: 0,
+            scx: 0,
+            bgp: 0,
             current_mode: PpuModes::OamSearch,
             total_cycles: 0,
             framebuffer: Box::new([0; 160 * 144 * 4]),
