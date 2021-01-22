@@ -32,7 +32,7 @@ impl MemInterface for Bus {
             0xFF04..=0xFF07 => self.timers.read_byte(addr),
 
             // PPU IO.
-            0xFF40..=0xFF44 | 0xFF47 => self.ppu.read_byte(addr),
+            0xFF40..=0xFF45 | 0xFF47 => self.ppu.read_byte(addr),
 
             // Interrupts.
             0xFF0F => self.if_flag,
@@ -52,7 +52,7 @@ impl MemInterface for Bus {
             0xFF04..=0xFF07 => self.timers.write_byte(addr, value),
 
             // PPU IO.
-            0xFF40..=0xFF44 | 0xFF47 => self.ppu.write_byte(addr, value),
+            0xFF40..=0xFF45 | 0xFF47 => self.ppu.write_byte(addr, value),
 
             // Interrupts.
             0xFF0F => self.if_flag = value,
@@ -83,6 +83,6 @@ impl Bus {
     /// Tick all the components on the bus by the given T-cycles.
     pub fn tick_components(&mut self, t_elapsed: u32) {
         self.timers.tick(t_elapsed, &mut self.if_flag);
-        self.ppu.tick(t_elapsed);
+        self.ppu.tick(t_elapsed, &mut self.if_flag);
     }
 }

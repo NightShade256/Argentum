@@ -27,6 +27,9 @@ pub struct Ppu {
     /// The current scanline the PPU is rendering.
     ly: u8,
 
+    /// LY Compare register.
+    lyc: u8,
+
     /// The LCD control register.
     lcdc: u8,
 
@@ -61,6 +64,7 @@ impl MemInterface for Ppu {
             0xFF42 => self.scy,
             0xFF43 => self.scx,
             0xFF44 => self.ly,
+            0xFF45 => self.lyc,
             0xFF47 => self.bgp,
 
             _ => unreachable!(),
@@ -75,6 +79,7 @@ impl MemInterface for Ppu {
             0xFF42 => self.scy = value,
             0xFF43 => self.scx = value,
             0xFF44 => {}
+            0xFF45 => self.lyc = value,
             0xFF47 => self.bgp = value,
 
             _ => unreachable!(),
@@ -88,6 +93,7 @@ impl Ppu {
         Self {
             vram: Box::new([0; 0x2000]),
             ly: 0,
+            lyc: 0,
             lcdc: 0,
             stat: 0,
             scy: 0,
@@ -100,21 +106,46 @@ impl Ppu {
     }
 
     /// Change the PPU's current mode.
-    pub fn change_mode(&mut self, mode: PpuModes) {
+    pub fn change_mode(&mut self, mode: PpuModes, if_reg: &mut u8) {
         match &mode {
             PpuModes::HBlank => {
                 self.current_mode = mode;
                 self.stat &= 0xFC;
+
+                // Render the scanline.
+                // Right now it's just the background.
+                self.render_background();
+
+                // Request STAT interrupt if
+                // the appropriate bit is set.
+                if (self.stat & 0x08) != 0 {
+                    *if_reg |= 0b0000_0010;
+                }
             }
 
             PpuModes::VBlank => {
                 self.current_mode = mode;
                 self.stat = (self.stat & 0xFC) | 0x01;
+
+                // Request VBlank interrupt.
+                *if_reg |= 0b0000_0001;
+
+                // Request STAT interrupt if
+                // the appropriate bit is set.
+                if (self.stat & 0x10) != 0 {
+                    *if_reg |= 0b0000_0010;
+                }
             }
 
             PpuModes::OamSearch => {
                 self.current_mode = mode;
                 self.stat = (self.stat & 0xFC) | 0x02;
+
+                // Request STAT interrupt if
+                // the appropriate bit is set.
+                if (self.stat & 0x20) != 0 {
+                    *if_reg |= 0b0000_0010;
+                }
             }
 
             PpuModes::Drawing => {
@@ -125,7 +156,7 @@ impl Ppu {
     }
 
     /// Tick the PPU by the given T-cycles.
-    pub fn tick(&mut self, t_elapsed: u32) {
+    pub fn tick(&mut self, t_elapsed: u32, if_reg: &mut u8) {
         self.total_cycles += t_elapsed;
 
         // The actual PPU timings are not fixed.
@@ -134,16 +165,12 @@ impl Ppu {
         match self.current_mode {
             PpuModes::OamSearch if self.total_cycles >= 80 => {
                 self.total_cycles -= 80;
-                self.change_mode(PpuModes::Drawing);
+                self.change_mode(PpuModes::Drawing, if_reg);
             }
 
             PpuModes::Drawing if self.total_cycles >= 172 => {
                 self.total_cycles -= 172;
-
-                // Render the background map.
-                self.render_background();
-
-                self.change_mode(PpuModes::HBlank);
+                self.change_mode(PpuModes::HBlank, if_reg);
             }
 
             PpuModes::HBlank if self.total_cycles >= 204 => {
@@ -152,9 +179,9 @@ impl Ppu {
 
                 // LY 0x90 (144) signals end of one complete frame.
                 if self.ly == 0x90 {
-                    self.change_mode(PpuModes::VBlank);
+                    self.change_mode(PpuModes::VBlank, if_reg);
                 } else {
-                    self.change_mode(PpuModes::OamSearch);
+                    self.change_mode(PpuModes::OamSearch, if_reg);
                 }
             }
 
@@ -166,11 +193,19 @@ impl Ppu {
                 // These 10 lines are `psuedo lines` of sorts.
                 if self.ly == 154 {
                     self.ly = 0;
-                    self.change_mode(PpuModes::OamSearch);
+                    self.change_mode(PpuModes::OamSearch, if_reg);
                 }
             }
 
             _ => {}
+        }
+
+        // Compare LY and LYC, and set appropriate bits
+        // and request interrupt if LY=LYC and if the interrupt is enabled.
+        self.stat = (self.stat & 0b1111_1011) | (self.ly == self.lyc) as u8;
+
+        if (self.stat & 0x40) != 0 && self.ly == self.lyc {
+            *if_reg |= 0b0000_0010;
         }
     }
 
