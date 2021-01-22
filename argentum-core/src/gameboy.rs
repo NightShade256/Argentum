@@ -26,6 +26,7 @@ impl GameBoy {
     /// Skip the Game Boy bootrom.
     pub fn skip_bootrom(&mut self) {
         self.cpu.skip_bootrom();
+        self.bus.skip_bootrom();
     }
 
     /// Get a reference to the rendered framebuffer.

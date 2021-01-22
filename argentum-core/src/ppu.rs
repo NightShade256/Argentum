@@ -8,7 +8,9 @@ use crate::common::MemInterface;
 /// 2 - Dark Gray
 /// 3 - Black
 /// Alpha is FF in all cases.
-const COLOR_PALLETE: [u32; 4] = [0xFFFFFFFF, 0xD3D3D3FF, 0xA9A9A9FF, 0x000000FF];
+///
+/// Palette is equal to the palette of BGB.
+const COLOR_PALETTE: [u32; 4] = [0xE0F8D0FF, 0x88C070FF, 0x346856FF, 0x081820FF];
 
 /// Enumerates all the different modes the PPU can be in.
 pub enum PpuModes {
@@ -106,7 +108,7 @@ impl Ppu {
     }
 
     /// Change the PPU's current mode.
-    pub fn change_mode(&mut self, mode: PpuModes, if_reg: &mut u8) {
+    fn change_mode(&mut self, mode: PpuModes, if_reg: &mut u8) {
         match &mode {
             PpuModes::HBlank => {
                 self.current_mode = mode;
@@ -155,6 +157,19 @@ impl Ppu {
         }
     }
 
+    /// Compare LY and LYC, set bits and trigger interrupts.
+    fn compare_lyc(&mut self, if_reg: &mut u8) {
+        if self.ly == self.lyc {
+            self.stat |= 0x04;
+
+            if (self.stat & 0x40) != 0 {
+                *if_reg |= 0b0000_0010;
+            }
+        } else {
+            self.stat &= !0x04;
+        }
+    }
+
     /// Tick the PPU by the given T-cycles.
     pub fn tick(&mut self, t_elapsed: u32, if_reg: &mut u8) {
         self.total_cycles += t_elapsed;
@@ -183,6 +198,8 @@ impl Ppu {
                 } else {
                     self.change_mode(PpuModes::OamSearch, if_reg);
                 }
+
+                self.compare_lyc(if_reg);
             }
 
             PpuModes::VBlank if self.total_cycles >= 456 => {
@@ -195,17 +212,11 @@ impl Ppu {
                     self.ly = 0;
                     self.change_mode(PpuModes::OamSearch, if_reg);
                 }
+
+                self.compare_lyc(if_reg);
             }
 
             _ => {}
-        }
-
-        // Compare LY and LYC, and set appropriate bits
-        // and request interrupt if LY=LYC and if the interrupt is enabled.
-        self.stat = (self.stat & 0b1111_1011) | (self.ly == self.lyc) as u8;
-
-        if (self.stat & 0x40) != 0 && self.ly == self.lyc {
-            *if_reg |= 0b0000_0010;
         }
     }
 
@@ -221,6 +232,13 @@ impl Ppu {
     // Render the background map with scroll.
     // Windows not yet rendered.
     fn render_background(&mut self) {
+        // This kind of disables windows and background
+        // drawing.
+        // Sprites not affected by this.
+        if (self.lcdc & 0x01) == 0 {
+            return;
+        }
+
         // The address of the tile map that is to
         // be rendered minus 0x8000.
         let tile_map: u16 = if (self.lcdc & 0x08) != 0 {
@@ -234,7 +252,7 @@ impl Ppu {
         let tile_data: u16 = if (self.lcdc & 0x10) != 0 {
             0x0000
         } else {
-            0x0800
+            0x1000
         };
 
         // The Y coordinate we are interested in, in the
@@ -259,11 +277,11 @@ impl Ppu {
             // Here we get the tile address.
             // There are two addressing modes.
             // 1. Unsigned Mode (0x8000): (TILE_NUMBER * 16) + 0x8000.
-            // 2. Signed Mode (0x8800): (TILE_NUMBER * 16) + 0x8800.
+            // 2. Signed Mode (0x8800): (TILE_NUMBER * 16) + 09000.
             //
             // In the first method the TILE_NUMBER is treated as u8,
             // in the second method it is treated as i8.
-            let address = if tile_map == 0x8000 {
+            let address = if tile_data == 0x0000 {
                 // Unsigned addressing mode.
                 tile_data + (tile_number as u16 * 16) + row
             } else {
@@ -283,7 +301,7 @@ impl Ppu {
             let pallete_index = (self.bgp >> (colour << 1)) & 0x03;
 
             // The actual colour of the pixel.
-            let colour = COLOR_PALLETE[pallete_index as usize];
+            let colour = COLOR_PALETTE[pallete_index as usize];
 
             // Draw the pixel.
             self.draw_pixel(col, self.ly, colour);

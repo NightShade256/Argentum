@@ -34,6 +34,10 @@ impl MemInterface for Bus {
             // PPU IO.
             0xFF40..=0xFF45 | 0xFF47 => self.ppu.read_byte(addr),
 
+            // Stub Joypad
+            // TEMPORARY
+            0xFF00 => 0xFF,
+
             // Interrupts.
             0xFF0F => self.if_flag,
             0xFFFF => self.ie_flag,
@@ -78,6 +82,12 @@ impl Bus {
             if_flag: 0,
             ie_flag: 0,
         }
+    }
+
+    /// Skip the bootrom, and initialize all the registers.
+    pub fn skip_bootrom(&mut self) {
+        self.ppu.write_byte(0xFF40, 0x91);
+        self.ppu.write_byte(0xFF47, 0xFC);
     }
 
     /// Tick all the components on the bus by the given T-cycles.
