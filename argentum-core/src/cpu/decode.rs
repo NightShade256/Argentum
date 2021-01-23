@@ -1,8 +1,6 @@
 //! Contains functions to decode opcodes and dispatch
 //! correct methods or perform the required work.
 
-use std::io::prelude::*;
-
 use super::*;
 
 // WHOMSOEVER STRAY HITHER, READ AHEAD
@@ -20,6 +18,7 @@ const R16_GROUP_TWO: [Reg16; 4] = [Reg16::BC, Reg16::DE, Reg16::HLI, Reg16::HLD]
 /// R16 (group 3)
 const R16_GROUP_THR: [Reg16; 4] = [Reg16::BC, Reg16::DE, Reg16::HL, Reg16::AF];
 
+/// Special OpCodes group.
 const OPCODE_GROUP_ONE: [fn(&mut Cpu) -> (); 8] = [
     Cpu::rlca,
     Cpu::rrca,
@@ -385,17 +384,7 @@ impl Cpu {
             }
 
             // Invalid opcodes.
-            _ => {}
-        }
-
-        // Output text written to serial port by Blargg's tests.
-        // Temporary.
-        if bus.read_byte(0xFF02) == 0x81 {
-            let c = bus.read_byte(0xFF01) as char;
-            bus.write_byte(0xFF02, 0x00);
-
-            print!("{}", c);
-            std::io::stdout().flush().unwrap();
+            _ => eprintln!("Illegal operation code {:#04X} encountered.", opcode),
         }
     }
 }
