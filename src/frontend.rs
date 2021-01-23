@@ -42,6 +42,7 @@ pub fn start() {
     let rom = std::fs::read(rom_path).expect("Failed to read the ROM.");
 
     let mut argentum = GameBoy::new(&rom);
+    argentum.skip_bootrom();
 
     // Create a event loop, and initialize the display.
     let event_loop = EventLoop::new();

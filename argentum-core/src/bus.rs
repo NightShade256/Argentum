@@ -103,6 +103,8 @@ impl Bus {
     pub fn skip_bootrom(&mut self) {
         self.ppu.write_byte(0xFF40, 0x91);
         self.ppu.write_byte(0xFF47, 0xFC);
+        self.ppu.write_byte(0xFF48, 0xFF);
+        self.ppu.write_byte(0xFF49, 0xFF);
     }
 
     /// Tick all the components on the bus by the given T-cycles.
