@@ -26,6 +26,9 @@ pub struct Ppu {
     /// Mapped to 0x8000 to 0x9FFF.
     vram: Box<[u8; 0x2000]>,
 
+    /// Object Attribute Map.
+    oam: Box<[u8; 0xA0]>,
+
     /// The current scanline the PPU is rendering.
     ly: u8,
 
@@ -47,6 +50,12 @@ pub struct Ppu {
     /// Background pallete data.
     bgp: u8,
 
+    /// Object Palette 0
+    obp0: u8,
+
+    /// Object Palette 1
+    obp1: u8,
+
     /// The current mode the PPU is in.
     current_mode: PpuModes,
 
@@ -61,6 +70,7 @@ impl MemInterface for Ppu {
     fn read_byte(&self, addr: u16) -> u8 {
         match addr {
             0x8000..=0x9FFF => self.vram[(addr - 0x8000) as usize],
+            0xFE00..=0xFE9F => self.oam[(addr - 0xFE00) as usize],
             0xFF40 => self.lcdc,
             0xFF41 => self.stat,
             0xFF42 => self.scy,
@@ -68,6 +78,8 @@ impl MemInterface for Ppu {
             0xFF44 => self.ly,
             0xFF45 => self.lyc,
             0xFF47 => self.bgp,
+            0xFF48 => self.obp0,
+            0xFF49 => self.obp1,
 
             _ => unreachable!(),
         }
@@ -76,6 +88,7 @@ impl MemInterface for Ppu {
     fn write_byte(&mut self, addr: u16, value: u8) {
         match addr {
             0x8000..=0x9FFF => self.vram[(addr - 0x8000) as usize] = value,
+            0xFE00..=0xFE9F => self.oam[(addr - 0xFE00) as usize] = value,
             0xFF40 => self.lcdc = value,
             0xFF41 => self.stat = (value & 0xFC) | (self.stat & 0x07),
             0xFF42 => self.scy = value,
@@ -83,6 +96,8 @@ impl MemInterface for Ppu {
             0xFF44 => {}
             0xFF45 => self.lyc = value,
             0xFF47 => self.bgp = value,
+            0xFF48 => self.obp0 = value,
+            0xFF49 => self.obp1 = value,
 
             _ => unreachable!(),
         }
@@ -94,6 +109,7 @@ impl Ppu {
     pub fn new() -> Self {
         Self {
             vram: Box::new([0; 0x2000]),
+            oam: Box::new([0; 0xA0]),
             ly: 0,
             lyc: 0,
             lcdc: 0,
@@ -101,6 +117,8 @@ impl Ppu {
             scy: 0,
             scx: 0,
             bgp: 0,
+            obp0: 0,
+            obp1: 0,
             current_mode: PpuModes::OamSearch,
             total_cycles: 0,
             framebuffer: Box::new([0; 160 * 144 * 4]),
@@ -297,7 +315,7 @@ impl Ppu {
             // The colour pallete index.
             let col_ = x % 8;
             let colour =
-                (((byte_two >> (7 - col_)) & 0x01) << 1) | ((byte_one >> (7 - col_)) & 0x01);
+                (((byte_one >> (7 - col_)) & 0x01) << 1) | ((byte_two >> (7 - col_)) & 0x01);
             let pallete_index = (self.bgp >> (colour << 1)) & 0x03;
 
             // The actual colour of the pixel.
@@ -307,4 +325,7 @@ impl Ppu {
             self.draw_pixel(col, self.ly, colour);
         }
     }
+
+    /// Render the sprites present on this scanline.
+    fn render_sprites(&mut self) {}
 }

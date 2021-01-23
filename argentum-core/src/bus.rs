@@ -25,18 +25,21 @@ pub struct Bus {
 impl MemInterface for Bus {
     fn read_byte(&self, addr: u16) -> u8 {
         match addr {
-            // Video RAM.
+            // Video RAM, rerouted to PPU.
             0x8000..=0x9FFF => self.ppu.read_byte(addr),
+
+            // OAM RAM, rerouted to PPU.
+            0xFE00..=0xFE9F => self.ppu.read_byte(addr),
+
+            // Stub Joypad
+            // TEMPORARY
+            0xFF00 => 0xFF,
 
             // Timer IO.
             0xFF04..=0xFF07 => self.timers.read_byte(addr),
 
             // PPU IO.
-            0xFF40..=0xFF45 | 0xFF47 => self.ppu.read_byte(addr),
-
-            // Stub Joypad
-            // TEMPORARY
-            0xFF00 => 0xFF,
+            0xFF40..=0xFF45 | 0xFF47..=0xFF49 => self.ppu.read_byte(addr),
 
             // Interrupts.
             0xFF0F => self.if_flag,
@@ -52,11 +55,23 @@ impl MemInterface for Bus {
             // Video RAM.
             0x8000..=0x9FFF => self.ppu.write_byte(addr, value),
 
+            // OAM RAM, rerouted to PPU.
+            0xFE00..=0xFE9F => self.ppu.write_byte(addr, value),
+
             // Timer IO.
             0xFF04..=0xFF07 => self.timers.write_byte(addr, value),
 
             // PPU IO.
-            0xFF40..=0xFF45 | 0xFF47 => self.ppu.write_byte(addr, value),
+            0xFF40..=0xFF45 | 0xFF47..=0xFF49 => self.ppu.write_byte(addr, value),
+
+            // DMA
+            0xFF46 => {
+                let source = (value as u16) * 0x100;
+
+                for i in 0..0xA0 {
+                    self.write_byte(0xFE00 + i, self.read_byte(source + i));
+                }
+            }
 
             // Interrupts.
             0xFF0F => self.if_flag = value,
