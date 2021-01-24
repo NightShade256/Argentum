@@ -43,7 +43,7 @@ impl MemInterface for Bus {
             0xFF04..=0xFF07 => self.timers.read_byte(addr),
 
             // PPU IO.
-            0xFF40..=0xFF45 | 0xFF47..=0xFF49 => self.ppu.read_byte(addr),
+            0xFF40..=0xFF45 | 0xFF47..=0xFF4B => self.ppu.read_byte(addr),
 
             // Interrupts.
             0xFF0F => self.if_flag,
@@ -71,7 +71,7 @@ impl MemInterface for Bus {
             0xFF04..=0xFF07 => self.timers.write_byte(addr, value),
 
             // PPU IO.
-            0xFF40..=0xFF45 | 0xFF47..=0xFF49 => self.ppu.write_byte(addr, value),
+            0xFF40..=0xFF45 | 0xFF47..=0xFF4B => self.ppu.write_byte(addr, value),
 
             // DMA
             0xFF46 => {

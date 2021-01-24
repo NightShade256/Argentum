@@ -56,6 +56,12 @@ pub struct Ppu {
     /// Object Palette 1
     obp1: u8,
 
+    /// Window X Coordinate - 7
+    wx: u8,
+
+    /// Window Y Coordinate
+    wy: u8,
+
     /// The current mode the PPU is in.
     current_mode: PpuModes,
 
@@ -80,6 +86,8 @@ impl MemInterface for Ppu {
             0xFF47 => self.bgp,
             0xFF48 => self.obp0,
             0xFF49 => self.obp1,
+            0xFF4A => self.wy,
+            0xFF4B => self.wx,
 
             _ => unreachable!(),
         }
@@ -98,6 +106,8 @@ impl MemInterface for Ppu {
             0xFF47 => self.bgp = value,
             0xFF48 => self.obp0 = value,
             0xFF49 => self.obp1 = value,
+            0xFF4A => self.wy = value,
+            0xFF4B => self.wx = value,
 
             _ => unreachable!(),
         }
@@ -119,6 +129,8 @@ impl Ppu {
             bgp: 0,
             obp0: 0,
             obp1: 0,
+            wx: 0,
+            wy: 0,
             current_mode: PpuModes::OamSearch,
             total_cycles: 0,
             framebuffer: Box::new([0; 160 * 144 * 4]),
