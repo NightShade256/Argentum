@@ -133,8 +133,7 @@ impl Ppu {
                 self.stat &= 0xFC;
 
                 // Render the scanline.
-                // Right now it's just the background.
-                self.render_background();
+                self.render_scanline();
 
                 // Request STAT interrupt if
                 // the appropriate bit is set.
@@ -186,6 +185,12 @@ impl Ppu {
         } else {
             self.stat &= !0x04;
         }
+    }
+
+    /// Render the current scanline.
+    fn render_scanline(&mut self) {
+        self.render_background();
+        self.render_sprites();
     }
 
     /// Tick the PPU by the given T-cycles.
@@ -247,8 +252,21 @@ impl Ppu {
         self.framebuffer[offset..offset + 4].copy_from_slice(&bytes);
     }
 
-    // Render the background map with scroll.
-    // Windows not yet rendered.
+    /// Gets the colour of a particular pixel at the given `x` and `y`
+    /// coordinates.
+    fn get_pixel(&self, x_coord: u8, y_coord: u8) -> u32 {
+        let offset = (y_coord as usize * 160 * 4) + x_coord as usize * 4;
+
+        let r = self.framebuffer[offset];
+        let g = self.framebuffer[offset + 1];
+        let b = self.framebuffer[offset + 2];
+        let a = self.framebuffer[offset + 3];
+
+        ((r as u32) << 24) | ((g as u32) << 16) | ((b as u32) << 8) | (a as u32)
+    }
+
+    // Render the background map with scroll for this scanline.
+    // TODO: Render Windows.
     fn render_background(&mut self) {
         // This kind of disables windows and background
         // drawing.
@@ -285,12 +303,12 @@ impl Ppu {
             // What tile number the coordinates correspond to.
             // Each tile is 8 pixels wide and 8 pixels tall, and
             // the background is 32 by 32 tiles in size.
-            let tile_number_index = tile_map + (((y as u16 / 8) * 32) + (x as u16 / 8));
+            let tile_number_index = tile_map + (((y as u16 / 8) << 5) + (x as u16 / 8));
             let tile_number = self.vram[tile_number_index as usize];
 
             // The row of the tile we are interested in.
             // (Each row is of two bytes).
-            let row = ((y % 8) * 2) as u16;
+            let row = ((y % 8) << 1) as u16;
 
             // Here we get the tile address.
             // There are two addressing modes.
@@ -301,10 +319,11 @@ impl Ppu {
             // in the second method it is treated as i8.
             let address = if tile_data == 0x0000 {
                 // Unsigned addressing mode.
-                tile_data + (tile_number as u16 * 16) + row
+                tile_data + ((tile_number as u16) << 4) + row
             } else {
                 // Signed addressing mode.
-                tile_data + ((tile_number as i8 as i16) as u16 * 16) + row
+                // CAN PANIC IF COMPILED IN DEBUG MODE DUE TO OVERFLOW.
+                tile_data + (((tile_number as i8 as i16) as u16) << 4) + row
             } as usize;
 
             // The two bytes of the row.
@@ -313,9 +332,9 @@ impl Ppu {
             let byte_one = self.vram[address + 1];
 
             // The colour pallete index.
-            let col_ = x % 8;
-            let colour =
-                (((byte_one >> (7 - col_)) & 0x01) << 1) | ((byte_two >> (7 - col_)) & 0x01);
+            let tile_col = x % 8;
+            let colour = (((byte_one >> (7 - tile_col)) & 0x01) << 1)
+                | ((byte_two >> (7 - tile_col)) & 0x01);
             let pallete_index = (self.bgp >> (colour << 1)) & 0x03;
 
             // The actual colour of the pixel.
@@ -327,5 +346,117 @@ impl Ppu {
     }
 
     /// Render the sprites present on this scanline.
-    fn render_sprites(&mut self) {}
+    fn render_sprites(&mut self) {
+        // The 1st bit of LCDC controls whether OBJs (sprites)
+        // are enabled or not.
+        if (self.lcdc & 0x02) == 0 {
+            return;
+        }
+
+        // The 2nd bit of LCDC controls the sprite size.
+        // If it is enabled sprites are 16 units tall.
+        // If not then they are 8 units tall.
+        let sprite_size = if (self.lcdc & 0x04) != 0 { 16 } else { 8 };
+
+        // Go through the OAM ram and search for all the sprites
+        // that are visible in this scanline.
+        // This is similar to what the PPU does in OAM search mode.
+        //
+        // The requirements for a sprite to be visible are,
+        // 1. Y COORD <= LY
+        // 2. Y COORD + SPRITE SIZE > LY
+        let mut sprites = Vec::with_capacity(40);
+
+        for entry in self.oam.chunks_exact(4) {
+            // If we hit 10 sprites already, break since
+            // we cannot have more than 10 on one scanline.
+            if sprites.len() >= 40 {
+                break;
+            }
+
+            // Corrected Y coordinate.
+            // Sprites with Y coord 16 are fully visible on screen.
+            // For sprites that are 8x8 it doesn't matter though.
+            let y_coord = entry[0].wrapping_sub(16);
+
+            // Check for the above conditions.
+            if y_coord <= self.ly && self.ly < y_coord.wrapping_add(sprite_size) {
+                for i in entry {
+                    sprites.push(*i);
+                }
+            }
+        }
+
+        // Render the sprites.
+        for entry in sprites.chunks_exact(4) {
+            // The corrected coordinates of the sprite.
+            // Explained above.
+            let x_coord = entry[1].wrapping_sub(8);
+            let y_coord = entry[0].wrapping_sub(16);
+
+            // The tile number associated with the sprite.
+            let tile_number = entry[2];
+
+            // Various sprite attributes.
+            let objattr = entry[3];
+
+            // Is the sprite flipped over the Y axis.
+            let y_flip = (objattr & 0x40) != 0;
+
+            // Is the sprite flipped over the X axis.
+            let x_flip = (objattr & 0x20) != 0;
+
+            // The palette used to render the sprite.
+            let palette = if (objattr & 0x10) != 0 {
+                self.obp1
+            } else {
+                self.obp0
+            };
+
+            // Should the sprite be drawn over the background layer.
+            // If this is false, the sprite will only be drawn
+            // if the colour of BG is NOT 1-3.
+            let sprite_over_bg = (objattr & 0x80) == 0;
+
+            // The row in the tile of the sprite.
+            let row = if y_flip {
+                sprite_size - (self.ly - y_coord + 1)
+            } else {
+                self.ly - y_coord
+            };
+
+            // The address of the sprite tile.
+            let address = (((tile_number as u16) << 4) + ((row as u16) << 1)) as usize;
+
+            // Extract the actual tile data.
+            let byte_two = self.vram[address];
+            let byte_one = self.vram[address + 1];
+
+            // Render the sprite.
+            for col in 0..8 {
+                let corrected_x = x_coord + col;
+
+                if corrected_x <= 160 {
+                    // Get the index of the colour.
+                    // 0 - Is always transparent for sprites.
+                    let colour_index = if x_flip {
+                        ((byte_one >> col & 0x01) << 1) | (byte_two >> col & 0x01)
+                    } else {
+                        ((byte_one >> (7 - col) & 0x01) << 1) | (byte_two >> (7 - col) & 0x01)
+                    };
+
+                    // Extract the actual RGBA colour.
+                    let colour = COLOR_PALETTE[((palette >> (colour_index << 1)) & 0x03) as usize];
+
+                    if colour_index != 0 {
+                        if sprite_over_bg {
+                            self.draw_pixel(corrected_x, self.ly, colour);
+                        } else if self.get_pixel(corrected_x, self.ly) == COLOR_PALETTE[0] {
+                            self.draw_pixel(corrected_x, self.ly, colour)
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

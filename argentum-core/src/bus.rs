@@ -121,5 +121,6 @@ impl Bus {
     pub fn tick_components(&mut self, t_elapsed: u32) {
         self.timers.tick(t_elapsed, &mut self.if_flag);
         self.ppu.tick(t_elapsed, &mut self.if_flag);
+        self.joypad.tick(t_elapsed, &mut self.if_flag);
     }
 }

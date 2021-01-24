@@ -29,6 +29,9 @@ pub struct Joypad {
 
     /// Current keypad state.
     state: GbKey,
+
+    /// Should request joypad interrupt?
+    irq: bool,
 }
 
 impl MemInterface for Joypad {
@@ -71,6 +74,15 @@ impl Joypad {
             directional: false,
             buttons: false,
             state: GbKey::empty(),
+            irq: false,
+        }
+    }
+
+    /// This is a stub.
+    /// This only requests a joypad interrupt, if a button goes from hi to lo.
+    pub fn tick(&mut self, _: u32, if_reg: &mut u8) {
+        if self.irq {
+            *if_reg |= 0b0001_0000;
         }
     }
 
@@ -78,6 +90,7 @@ impl Joypad {
     #[inline]
     pub fn key_down(&mut self, key: GbKey) {
         self.state.insert(key);
+        self.irq = true;
     }
 
     /// Register the key being unpressed.
