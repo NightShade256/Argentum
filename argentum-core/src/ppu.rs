@@ -287,9 +287,23 @@ impl Ppu {
             return;
         }
 
-        // The address of the tile map that is to
+        // If we are rendering a window.
+        let rendering_window = self.wy <= self.ly && (self.lcdc & 0x20) != 0;
+
+        // The top left X coordinate of the window.
+        let window_x = self.wx.saturating_sub(7);
+
+        // The address of the window tile map that is to
         // be rendered minus 0x8000.
-        let tile_map: u16 = if (self.lcdc & 0x08) != 0 {
+        let win_tile_map: u16 = if (self.lcdc & 0x40) != 0 {
+            0x1C00
+        } else {
+            0x1800
+        };
+
+        // The address of the background tile map that is to
+        // be rendered minus 0x8000.
+        let bg_tile_map: u16 = if (self.lcdc & 0x08) != 0 {
             0x1C00
         } else {
             0x1800
@@ -303,18 +317,24 @@ impl Ppu {
             0x1000
         };
 
-        // The Y coordinate we are interested in, in the
-        // background tile map.
-        let y = self.ly.wrapping_add(self.scy);
-
         for col in 0u8..160u8 {
-            // The X coordinate we are interested in, in the
-            // background tile map.
-            let x = col.wrapping_add(self.scx);
+            // The coordinates we are interested in tile map, and the
+            // tile map itself.
+            let (x, y, tile_map) = if rendering_window && window_x <= col {
+                let y = self.ly - self.wy;
+                let x = col - window_x;
+
+                (x, y, win_tile_map)
+            } else {
+                let y = self.ly.wrapping_add(self.scy);
+                let x = col.wrapping_add(self.scx);
+
+                (x, y, bg_tile_map)
+            };
 
             // What tile number the coordinates correspond to.
             // Each tile is 8 pixels wide and 8 pixels tall, and
-            // the background is 32 by 32 tiles in size.
+            // the background/window is 32 by 32 tiles in size.
             let tile_number_index = tile_map + (((y as u16 / 8) << 5) + (x as u16 / 8));
             let tile_number = self.vram[tile_number_index as usize];
 
@@ -334,8 +354,9 @@ impl Ppu {
                 tile_data + ((tile_number as u16) << 4) + row
             } else {
                 // Signed addressing mode.
-                // CAN PANIC IF COMPILED IN DEBUG MODE DUE TO OVERFLOW.
-                tile_data + (((tile_number as i8 as i16) as u16) << 4) + row
+                tile_data
+                    .wrapping_add(((tile_number as i8 as i16) as u16) << 4)
+                    .wrapping_add(row)
             } as usize;
 
             // The two bytes of the row.
