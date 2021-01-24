@@ -1,5 +1,6 @@
 //! Contains implementation of the Game Boy memory bus interface.
 
+use crate::cartridge::*;
 use crate::common::MemInterface;
 use crate::joypad::Joypad;
 use crate::ppu::Ppu;
@@ -9,6 +10,9 @@ use crate::timers::Timers;
 pub struct Bus {
     // Ad hoc implementation.
     memory: Box<[u8; u16::MAX as usize + 1]>,
+
+    // The inserted cartridge.
+    cartridge: Box<dyn Cartridge>,
 
     // Interface to timers. (DIV, TIMA & co).
     timers: Timers,
@@ -29,6 +33,9 @@ pub struct Bus {
 impl MemInterface for Bus {
     fn read_byte(&self, addr: u16) -> u8 {
         match addr {
+            // ROM Banks.
+            0x0000..=0x7FFF => self.cartridge.read_byte(addr),
+
             // Video RAM, rerouted to PPU.
             0x8000..=0x9FFF => self.ppu.read_byte(addr),
 
@@ -56,9 +63,10 @@ impl MemInterface for Bus {
     /// Write a byte to the specified address.
     fn write_byte(&mut self, addr: u16, value: u8) {
         match addr {
-            0x0000..=0x7FFF => {}
+            // ROM Banks.
+            0x0000..=0x7FFF => self.cartridge.write_byte(addr, value),
 
-            // Video RAM.
+            // Video RAM, rerouted to PPU.
             0x8000..=0x9FFF => self.ppu.write_byte(addr, value),
 
             // OAM RAM, rerouted to PPU.
@@ -94,13 +102,17 @@ impl MemInterface for Bus {
 impl Bus {
     /// Create a new `Bus` instance.
     pub fn new(rom_buffer: &[u8]) -> Self {
-        let mut memory = Box::new([0; u16::MAX as usize + 1]);
+        let memory = Box::new([0; u16::MAX as usize + 1]);
 
-        // Load the ROM into memory.
-        memory[..rom_buffer.len()].copy_from_slice(rom_buffer);
+        let cartridge = match rom_buffer[0x0147] {
+            0x00 => Box::new(RomOnly::new(rom_buffer)),
+
+            _ => panic!("Only cartridges with two ROM banks are currently supported."),
+        };
 
         Self {
             memory,
+            cartridge,
             timers: Timers::new(),
             joypad: Joypad::new(),
             ppu: Ppu::new(),
