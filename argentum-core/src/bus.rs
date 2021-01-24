@@ -56,6 +56,8 @@ impl MemInterface for Bus {
     /// Write a byte to the specified address.
     fn write_byte(&mut self, addr: u16, value: u8) {
         match addr {
+            0x0000..=0x7FFF => {}
+
             // Video RAM.
             0x8000..=0x9FFF => self.ppu.write_byte(addr, value),
 
