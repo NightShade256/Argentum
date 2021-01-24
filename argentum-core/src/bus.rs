@@ -8,11 +8,14 @@ use crate::timers::Timers;
 
 /// The Game Boy memory bus.
 pub struct Bus {
-    // Ad hoc implementation.
-    memory: Box<[u8; u16::MAX as usize + 1]>,
-
     // The inserted cartridge.
     cartridge: Box<dyn Cartridge>,
+
+    // 8 KB of Work RAM.
+    wram: Box<[u8; 0x2000]>,
+
+    // High RAM.
+    high_ram: Box<[u8; 0x7F]>,
 
     // Interface to timers. (DIV, TIMA & co).
     timers: Timers,
@@ -39,24 +42,45 @@ impl MemInterface for Bus {
             // Video RAM, rerouted to PPU.
             0x8000..=0x9FFF => self.ppu.read_byte(addr),
 
+            // External RAM
+            // TODO
+            0xA000..=0xBFFF => 0xFF,
+
+            // Work RAM.
+            0xC000..=0xDFFF => self.wram[(addr - 0xC000) as usize],
+
+            // Echo RAM.
+            0xE000..=0xFDFF => self.wram[(addr - 0xE000) as usize],
+
             // OAM RAM, rerouted to PPU.
             0xFE00..=0xFE9F => self.ppu.read_byte(addr),
 
-            // Stub Joypad
-            // TEMPORARY
+            // Not Usable
+            0xFEA0..=0xFEFF => 0xFF,
+
+            // P1 or Joypad Register.
             0xFF00 => self.joypad.read_byte(addr),
 
-            // Timer IO.
+            // DIV, TIMA, TMA, TAC.
             0xFF04..=0xFF07 => self.timers.read_byte(addr),
 
-            // PPU IO.
+            // IF register.
+            0xFF0F => self.if_flag,
+
+            // PPU registers.
             0xFF40..=0xFF45 | 0xFF47..=0xFF4B => self.ppu.read_byte(addr),
 
-            // Interrupts.
-            0xFF0F => self.if_flag,
+            // DMA transfer request.
+            0xFF46 => 0xFF,
+
+            // High RAM.
+            0xFF80..=0xFFFE => self.high_ram[(addr - 0xFF80) as usize],
+
+            // IE register.
             0xFFFF => self.ie_flag,
 
-            _ => self.memory[addr as usize],
+            // Unused.
+            _ => 0xFF,
         }
     }
 
@@ -69,19 +93,35 @@ impl MemInterface for Bus {
             // Video RAM, rerouted to PPU.
             0x8000..=0x9FFF => self.ppu.write_byte(addr, value),
 
+            // External RAM
+            // TODO
+            0xA000..=0xBFFF => {}
+
+            // Work RAM.
+            0xC000..=0xDFFF => self.wram[(addr - 0xC000) as usize] = value,
+
+            // Echo RAM.
+            0xE000..=0xFDFF => self.wram[(addr - 0xE000) as usize] = value,
+
             // OAM RAM, rerouted to PPU.
             0xFE00..=0xFE9F => self.ppu.write_byte(addr, value),
 
-            // Joypad IO.
+            // Not Usable
+            0xFEA0..=0xFEFF => {}
+
+            // P1 or Joypad Register.
             0xFF00 => self.joypad.write_byte(addr, value),
 
-            // Timer IO.
+            // DIV, TIMA, TMA, TAC.
             0xFF04..=0xFF07 => self.timers.write_byte(addr, value),
 
-            // PPU IO.
+            // IF register.
+            0xFF0F => self.if_flag = value,
+
+            // PPU registers.
             0xFF40..=0xFF45 | 0xFF47..=0xFF4B => self.ppu.write_byte(addr, value),
 
-            // DMA
+            // DMA transfer request.
             0xFF46 => {
                 let source = (value as u16) * 0x100;
 
@@ -90,11 +130,14 @@ impl MemInterface for Bus {
                 }
             }
 
-            // Interrupts.
-            0xFF0F => self.if_flag = value,
+            // High RAM.
+            0xFF80..=0xFFFE => self.high_ram[(addr - 0xFF80) as usize] = value,
+
+            // IE register.
             0xFFFF => self.ie_flag = value,
 
-            _ => self.memory[addr as usize] = value,
+            // Unused.
+            _ => {}
         }
     }
 }
@@ -102,8 +145,6 @@ impl MemInterface for Bus {
 impl Bus {
     /// Create a new `Bus` instance.
     pub fn new(rom_buffer: &[u8]) -> Self {
-        let memory = Box::new([0; u16::MAX as usize + 1]);
-
         let cartridge = match rom_buffer[0x0147] {
             0x00 => Box::new(RomOnly::new(rom_buffer)),
 
@@ -111,8 +152,9 @@ impl Bus {
         };
 
         Self {
-            memory,
             cartridge,
+            wram: Box::new([0; 0x2000]),
+            high_ram: Box::new([0; 0x7F]),
             timers: Timers::new(),
             joypad: Joypad::new(),
             ppu: Ppu::new(),
