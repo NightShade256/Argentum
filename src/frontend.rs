@@ -1,7 +1,7 @@
 use glium::glutin::ContextBuilder;
 use glium::glutin::{
     dpi::LogicalSize,
-    event::{Event, WindowEvent},
+    event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
@@ -9,6 +9,7 @@ use glium::{texture::RawImage2d, uniforms::MagnifySamplerFilter};
 use glium::{BlitTarget, Display, Surface, Texture2d};
 
 use argentum_core::gameboy::GameBoy;
+use argentum_core::joypad::GbKey;
 
 /// Initialize the window, and then glium's
 /// display.
@@ -31,6 +32,36 @@ fn initialize_display(event_loop: &EventLoop<()>) -> Display {
     frame.finish().expect("Failed to swap buffers.");
 
     display
+}
+
+/// Handle the keyboard input.
+fn handle_input(gb: &mut GameBoy, input: &KeyboardInput) {
+    if let KeyboardInput {
+        virtual_keycode: Some(keycode),
+        state,
+        ..
+    } = input
+    {
+        let key = match keycode {
+            VirtualKeyCode::W => Some(GbKey::UP),
+            VirtualKeyCode::A => Some(GbKey::LEFT),
+            VirtualKeyCode::S => Some(GbKey::DOWN),
+            VirtualKeyCode::D => Some(GbKey::RIGHT),
+            VirtualKeyCode::Return => Some(GbKey::START),
+            VirtualKeyCode::Space => Some(GbKey::SELECT),
+            VirtualKeyCode::Z => Some(GbKey::BUTTONA),
+            VirtualKeyCode::X => Some(GbKey::BUTTONB),
+            _ => None,
+        };
+
+        if let Some(key) = key {
+            if *state == ElementState::Pressed {
+                gb.key_down(key);
+            } else {
+                gb.key_up(key);
+            }
+        }
+    }
 }
 
 /// Start running the emulator.
@@ -90,6 +121,11 @@ pub fn start() {
         } => {
             *control_flow = ControlFlow::Exit;
         }
+
+        Event::WindowEvent {
+            event: WindowEvent::KeyboardInput { input, .. },
+            ..
+        } => handle_input(&mut argentum, &input),
 
         _ => {}
     });

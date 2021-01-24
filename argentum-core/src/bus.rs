@@ -1,6 +1,7 @@
 //! Contains implementation of the Game Boy memory bus interface.
 
 use crate::common::MemInterface;
+use crate::joypad::Joypad;
 use crate::ppu::Ppu;
 use crate::timers::Timers;
 
@@ -11,6 +12,9 @@ pub struct Bus {
 
     // Interface to timers. (DIV, TIMA & co).
     timers: Timers,
+
+    /// The joypad interface.
+    pub joypad: Joypad,
 
     // The PPU itself.
     pub ppu: Ppu,
@@ -33,7 +37,7 @@ impl MemInterface for Bus {
 
             // Stub Joypad
             // TEMPORARY
-            0xFF00 => 0xFF,
+            0xFF00 => self.joypad.read_byte(addr),
 
             // Timer IO.
             0xFF04..=0xFF07 => self.timers.read_byte(addr),
@@ -57,6 +61,9 @@ impl MemInterface for Bus {
 
             // OAM RAM, rerouted to PPU.
             0xFE00..=0xFE9F => self.ppu.write_byte(addr, value),
+
+            // Joypad IO.
+            0xFF00 => self.joypad.write_byte(addr, value),
 
             // Timer IO.
             0xFF04..=0xFF07 => self.timers.write_byte(addr, value),
@@ -93,6 +100,7 @@ impl Bus {
         Self {
             memory,
             timers: Timers::new(),
+            joypad: Joypad::new(),
             ppu: Ppu::new(),
             if_flag: 0,
             ie_flag: 0,

@@ -1,6 +1,6 @@
 //! Contains the main entry point of this library.
 
-use crate::{bus::Bus, cpu::Cpu};
+use crate::{bus::Bus, cpu::Cpu, joypad::GbKey};
 
 /// T-cycles to execute per frame.
 const CYCLES_PER_FRAME: u32 = (4194304.0 / 59.73) as u32;
@@ -32,6 +32,16 @@ impl GameBoy {
     /// Get a reference to the rendered framebuffer.
     pub fn get_framebuffer(&self) -> &[u8] {
         self.bus.ppu.framebuffer.as_ref()
+    }
+
+    /// Redirects to joypad interface.
+    pub fn key_down(&mut self, key: GbKey) {
+        self.bus.joypad.key_down(key);
+    }
+
+    /// Redirects to joypad interface.
+    pub fn key_up(&mut self, key: GbKey) {
+        self.bus.joypad.key_up(key);
     }
 
     /// Execute one frames worth of instructions.
