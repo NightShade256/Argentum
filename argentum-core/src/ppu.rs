@@ -2,6 +2,13 @@
 
 use crate::common::MemInterface;
 
+// TODO
+//
+// 1. Use bitflags for LCDC and STAT (maybe).
+// 2. Resolve panics in debug mode.
+// 3. Fix issues with window rendering.
+// 4. General cleanup
+
 /// Pallete for the framebuffer.
 /// 0 - White
 /// 1 - Light Gray
@@ -481,6 +488,7 @@ impl Ppu {
                     // Extract the actual RGBA colour.
                     let colour = COLOR_PALETTE[((palette >> (colour_index << 1)) & 0x03) as usize];
 
+                    // We don't draw pixels that are transparent.
                     if colour_index != 0 {
                         if sprite_over_bg {
                             self.draw_pixel(corrected_x, self.ly, colour);

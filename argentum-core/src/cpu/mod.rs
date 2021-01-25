@@ -11,6 +11,11 @@ use self::registers::*;
 use crate::bus::Bus;
 use crate::common::MemInterface;
 
+// TODO
+//
+// 1. Use const-generics when that lands in stable for compile-time decoding.
+// 2. Implement STOP (maybe?)
+
 // The timing information found below is taken from the emulator
 // Purple Boy written by Kappamalone, [https://github.com/Kappamalone/PurpleBoy]
 // with their permission.

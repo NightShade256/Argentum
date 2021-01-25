@@ -9,16 +9,16 @@ use crate::timers::Timers;
 /// The Game Boy memory bus.
 pub struct Bus {
     // The inserted cartridge.
-    cartridge: Box<dyn Cartridge>,
+    pub cartridge: Box<dyn Cartridge>,
 
     // 8 KB of Work RAM.
-    wram: Box<[u8; 0x2000]>,
+    pub wram: Box<[u8; 0x2000]>,
 
     // High RAM.
-    high_ram: Box<[u8; 0x7F]>,
+    pub high_ram: Box<[u8; 0x7F]>,
 
     // Interface to timers. (DIV, TIMA & co).
-    timers: Timers,
+    pub timers: Timers,
 
     /// The joypad interface.
     pub joypad: Joypad,
@@ -44,7 +44,7 @@ impl MemInterface for Bus {
 
             // External RAM
             // TODO
-            0xA000..=0xBFFF => 0xFF,
+            0xA000..=0xBFFF => self.cartridge.read_byte(addr),
 
             // Work RAM.
             0xC000..=0xDFFF => self.wram[(addr - 0xC000) as usize],
@@ -95,7 +95,7 @@ impl MemInterface for Bus {
 
             // External RAM
             // TODO
-            0xA000..=0xBFFF => {}
+            0xA000..=0xBFFF => self.cartridge.write_byte(addr, value),
 
             // Work RAM.
             0xC000..=0xDFFF => self.wram[(addr - 0xC000) as usize] = value,
@@ -145,10 +145,11 @@ impl MemInterface for Bus {
 impl Bus {
     /// Create a new `Bus` instance.
     pub fn new(rom_buffer: &[u8]) -> Self {
-        let cartridge = match rom_buffer[0x0147] {
+        let cartridge: Box<dyn Cartridge> = match rom_buffer[0x0147] {
             0x00 => Box::new(RomOnly::new(rom_buffer)),
+            0x0F..=0x13 => Box::new(Mbc3::new(rom_buffer)),
 
-            _ => panic!("Only cartridges with two ROM banks are currently supported."),
+            _ => panic!("ROM ONLY + MBC3 cartridges are all that is currently supported."),
         };
 
         Self {

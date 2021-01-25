@@ -13,13 +13,13 @@ use argentum_core::joypad::GbKey;
 
 /// Initialize the window, and then glium's
 /// display.
-fn initialize_display(event_loop: &EventLoop<()>) -> Display {
+fn initialize_display(event_loop: &EventLoop<()>, title: &str) -> Display {
     // Create window and OpenGL context builders.
     let cb = ContextBuilder::new().with_vsync(true);
 
     let wb = WindowBuilder::new()
         .with_decorations(true)
-        .with_title("Argentum GB")
+        .with_title(format!("Argentum GB - {}", title))
         .with_min_inner_size(LogicalSize::new(160, 144))
         .with_inner_size(LogicalSize::new(480, 432));
 
@@ -77,7 +77,7 @@ pub fn start() {
 
     // Create a event loop, and initialize the display.
     let event_loop = EventLoop::new();
-    let display = initialize_display(&event_loop);
+    let display = initialize_display(&event_loop, argentum.game_title());
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::MainEventsCleared => {

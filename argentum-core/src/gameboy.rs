@@ -23,6 +23,11 @@ impl GameBoy {
         }
     }
 
+    /// Return the title of the game.
+    pub fn game_title(&self) -> &str {
+        self.bus.cartridge.game_title()
+    }
+
     /// Skip the Game Boy bootrom.
     pub fn skip_bootrom(&mut self) {
         self.cpu.skip_bootrom();
