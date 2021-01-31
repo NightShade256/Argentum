@@ -21,7 +21,7 @@ use crate::common::MemInterface;
 const COLOR_PALETTE: [u32; 4] = [0xE0F8D0FF, 0x88C070FF, 0x346856FF, 0x081820FF];
 
 bitflags! {
-    /// Struct that represents the LCD control registers.
+    /// Struct that represents the LCD control register.
     struct Lcdc: u8 {
         /// LCD display enable.
         const LCD_ENABLE = 0b1000_0000;
@@ -49,9 +49,31 @@ bitflags! {
     }
 }
 
+bitflags! {
+    /// Struct that represents the STAT register.
+    struct Stat: u8 {
+        /// LYC = LY coincidence interrupt.
+        const COINCIDENCE_INT = 0b0100_0000;
+
+        /// OAM search interrupt.
+        const OAM_INT = 0b0010_0000;
+
+        /// VBLANK interrupt.
+        const VBLANK_INT = 0b0001_0000;
+
+        /// HBLANK interrupt.
+        const HBLANK_INT = 0b0000_1000;
+
+        /// LY and LYC coincidence flag.
+        const COINCIDENCE_FLAG = 0b0000_0100;
+    }
+}
+
 /// Enumerates all the different modes the PPU can be in.
+#[derive(Clone, Copy)]
+#[repr(u8)]
 pub enum PpuModes {
-    HBlank,
+    HBlank = 0,
     VBlank,
     OamSearch,
     Drawing,
@@ -76,7 +98,7 @@ pub struct Ppu {
     lcdc: Lcdc,
 
     /// LCD status register.
-    stat: u8,
+    stat: Stat,
 
     /// Scroll Y register.
     scy: u8,
@@ -115,7 +137,7 @@ impl MemInterface for Ppu {
             0x8000..=0x9FFF => self.vram[(addr - 0x8000) as usize],
             0xFE00..=0xFE9F => self.oam[(addr - 0xFE00) as usize],
             0xFF40 => self.lcdc.bits(),
-            0xFF41 => self.stat,
+            0xFF41 => (self.current_mode as u8) | self.stat.bits() | (1 << 7),
             0xFF42 => self.scy,
             0xFF43 => self.scx,
             0xFF44 => self.ly,
@@ -135,7 +157,7 @@ impl MemInterface for Ppu {
             0x8000..=0x9FFF => self.vram[(addr - 0x8000) as usize] = value,
             0xFE00..=0xFE9F => self.oam[(addr - 0xFE00) as usize] = value,
             0xFF40 => self.lcdc = Lcdc::from_bits_truncate(value),
-            0xFF41 => self.stat = (value & 0xFC) | (self.stat & 0x07),
+            0xFF41 => self.stat = Stat::from_bits_truncate(value),
             0xFF42 => self.scy = value,
             0xFF43 => self.scx = value,
             0xFF44 => {}
@@ -160,7 +182,7 @@ impl Ppu {
             ly: 0,
             lyc: 0,
             lcdc: Lcdc::empty(),
-            stat: 0,
+            stat: Stat::empty(),
             scy: 0,
             scx: 0,
             bgp: 0,
@@ -179,46 +201,42 @@ impl Ppu {
         match &mode {
             PpuModes::HBlank => {
                 self.current_mode = mode;
-                self.stat &= 0xFC;
 
                 // Render the scanline.
                 self.render_scanline();
 
                 // Request STAT interrupt if
                 // the appropriate bit is set.
-                if (self.stat & 0x08) != 0 {
+                if self.stat.contains(Stat::HBLANK_INT) {
                     *if_reg |= 0b0000_0010;
                 }
             }
 
             PpuModes::VBlank => {
                 self.current_mode = mode;
-                self.stat = (self.stat & 0xFC) | 0x01;
 
                 // Request VBlank interrupt.
                 *if_reg |= 0b0000_0001;
 
                 // Request STAT interrupt if
                 // the appropriate bit is set.
-                if (self.stat & 0x10) != 0 {
+                if self.stat.contains(Stat::VBLANK_INT) {
                     *if_reg |= 0b0000_0010;
                 }
             }
 
             PpuModes::OamSearch => {
                 self.current_mode = mode;
-                self.stat = (self.stat & 0xFC) | 0x02;
 
                 // Request STAT interrupt if
                 // the appropriate bit is set.
-                if (self.stat & 0x20) != 0 {
+                if self.stat.contains(Stat::OAM_INT) {
                     *if_reg |= 0b0000_0010;
                 }
             }
 
             PpuModes::Drawing => {
                 self.current_mode = mode;
-                self.stat = (self.stat & 0xFC) | 0x03;
             }
         }
     }
@@ -226,13 +244,13 @@ impl Ppu {
     /// Compare LY and LYC, set bits and trigger interrupts.
     fn compare_lyc(&mut self, if_reg: &mut u8) {
         if self.ly == self.lyc {
-            self.stat |= 0x04;
+            self.stat.insert(Stat::COINCIDENCE_FLAG);
 
-            if (self.stat & 0x40) != 0 {
+            if self.stat.contains(Stat::COINCIDENCE_INT) {
                 *if_reg |= 0b0000_0010;
             }
         } else {
-            self.stat &= !0x04;
+            self.stat.remove(Stat::COINCIDENCE_FLAG);
         }
     }
 
