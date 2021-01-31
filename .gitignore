@@ -1,2 +1,5 @@
+# Build Artifacts
 /target
+
+# Test and Game ROM(s).
 *.gb

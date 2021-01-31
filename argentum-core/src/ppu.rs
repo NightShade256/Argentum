@@ -1,13 +1,14 @@
 //! Contains implementation of the Game Boy PPU.
 
+use bitflags::bitflags;
+
 use crate::common::MemInterface;
 
 // TODO
 //
-// 1. Use bitflags for LCDC and STAT (maybe).
-// 2. Resolve panics in debug mode.
-// 3. Fix issues with window rendering.
-// 4. General cleanup
+// 1. Resolve panics in debug mode.
+// 2. Fix issues with window rendering.
+// 3. General cleanup
 
 /// Pallete for the framebuffer.
 /// 0 - White
@@ -18,6 +19,35 @@ use crate::common::MemInterface;
 ///
 /// Palette is equal to the palette of BGB.
 const COLOR_PALETTE: [u32; 4] = [0xE0F8D0FF, 0x88C070FF, 0x346856FF, 0x081820FF];
+
+bitflags! {
+    /// Struct that represents the LCD control registers.
+    struct Lcdc: u8 {
+        /// LCD display enable.
+        const LCD_ENABLE = 0b1000_0000;
+
+        /// Window tile map display select.
+        const WINDOW_SELECT = 0b0100_0000;
+
+        /// Window display enable.
+        const WINDOW_ENABLE = 0b0010_0000;
+
+        /// BG & Window tile data select.
+        const TILE_DATA = 0b0001_0000;
+
+        /// BG tile map display select.
+        const BG_SELECT = 0b0000_1000;
+
+        /// Sprite Size.
+        const SPRITE_SIZE = 0b0000_0100;
+
+        /// Sprite Display Enable.
+        const SPRITE_ENABLE = 0b0000_0010;
+
+        /// BG/Window Enable.
+        const BG_WIN_ENABLE = 0b0000_0001;
+    }
+}
 
 /// Enumerates all the different modes the PPU can be in.
 pub enum PpuModes {
@@ -43,7 +73,7 @@ pub struct Ppu {
     lyc: u8,
 
     /// The LCD control register.
-    lcdc: u8,
+    lcdc: Lcdc,
 
     /// LCD status register.
     stat: u8,
@@ -84,7 +114,7 @@ impl MemInterface for Ppu {
         match addr {
             0x8000..=0x9FFF => self.vram[(addr - 0x8000) as usize],
             0xFE00..=0xFE9F => self.oam[(addr - 0xFE00) as usize],
-            0xFF40 => self.lcdc,
+            0xFF40 => self.lcdc.bits(),
             0xFF41 => self.stat,
             0xFF42 => self.scy,
             0xFF43 => self.scx,
@@ -104,7 +134,7 @@ impl MemInterface for Ppu {
         match addr {
             0x8000..=0x9FFF => self.vram[(addr - 0x8000) as usize] = value,
             0xFE00..=0xFE9F => self.oam[(addr - 0xFE00) as usize] = value,
-            0xFF40 => self.lcdc = value,
+            0xFF40 => self.lcdc = Lcdc::from_bits_truncate(value),
             0xFF41 => self.stat = (value & 0xFC) | (self.stat & 0x07),
             0xFF42 => self.scy = value,
             0xFF43 => self.scx = value,
@@ -129,7 +159,7 @@ impl Ppu {
             oam: Box::new([0; 0xA0]),
             ly: 0,
             lyc: 0,
-            lcdc: 0,
+            lcdc: Lcdc::empty(),
             stat: 0,
             scy: 0,
             scx: 0,
@@ -290,19 +320,19 @@ impl Ppu {
         // This kind of disables windows and background
         // drawing.
         // Sprites not affected by this.
-        if (self.lcdc & 0x01) == 0 {
+        if !self.lcdc.contains(Lcdc::BG_WIN_ENABLE) {
             return;
         }
 
         // If we are rendering a window.
-        let rendering_window = self.wy <= self.ly && (self.lcdc & 0x20) != 0;
+        let rendering_window = self.wy <= self.ly && self.lcdc.contains(Lcdc::WINDOW_ENABLE);
 
         // The top left X coordinate of the window.
         let window_x = self.wx.saturating_sub(7);
 
         // The address of the window tile map that is to
         // be rendered minus 0x8000.
-        let win_tile_map: u16 = if (self.lcdc & 0x40) != 0 {
+        let win_tile_map: u16 = if self.lcdc.contains(Lcdc::WINDOW_SELECT) {
             0x1C00
         } else {
             0x1800
@@ -310,7 +340,7 @@ impl Ppu {
 
         // The address of the background tile map that is to
         // be rendered minus 0x8000.
-        let bg_tile_map: u16 = if (self.lcdc & 0x08) != 0 {
+        let bg_tile_map: u16 = if self.lcdc.contains(Lcdc::BG_SELECT) {
             0x1C00
         } else {
             0x1800
@@ -318,7 +348,7 @@ impl Ppu {
 
         // The address of the tile data that
         // is going to be used for rendering minus 0x8000.
-        let tile_data: u16 = if (self.lcdc & 0x10) != 0 {
+        let tile_data: u16 = if self.lcdc.contains(Lcdc::TILE_DATA) {
             0x0000
         } else {
             0x1000
@@ -389,14 +419,18 @@ impl Ppu {
     fn render_sprites(&mut self) {
         // The 1st bit of LCDC controls whether OBJs (sprites)
         // are enabled or not.
-        if (self.lcdc & 0x02) == 0 {
+        if !self.lcdc.contains(Lcdc::SPRITE_ENABLE) {
             return;
         }
 
         // The 2nd bit of LCDC controls the sprite size.
         // If it is enabled sprites are 16 units tall.
         // If not then they are 8 units tall.
-        let sprite_size = if (self.lcdc & 0x04) != 0 { 16 } else { 8 };
+        let sprite_size = if self.lcdc.contains(Lcdc::SPRITE_SIZE) {
+            16
+        } else {
+            8
+        };
 
         // Go through the OAM ram and search for all the sprites
         // that are visible in this scanline.
