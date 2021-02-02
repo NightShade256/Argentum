@@ -10,7 +10,7 @@ use crate::common::MemInterface;
 // 2. Fix issues with window rendering.
 // 3. General cleanup
 
-/// Pallete for the framebuffer.
+/// Palette for the framebuffer.
 /// 0 - White
 /// 1 - Light Gray
 /// 2 - Dark Gray
@@ -81,11 +81,12 @@ pub enum PpuModes {
 
 /// Implementation of the Game Boy PPU.
 pub struct Ppu {
-    /// 8 KB VRAM
+    /// 8 KB Video RAM
     /// Mapped to 0x8000 to 0x9FFF.
     vram: Box<[u8; 0x2000]>,
 
-    /// Object Attribute Map.
+    /// Object Attribute Map RAM.
+    /// Mapped to 0xFE00 to 0xFE9F.
     oam: Box<[u8; 0xA0]>,
 
     /// The current scanline the PPU is rendering.
@@ -106,20 +107,27 @@ pub struct Ppu {
     /// Scroll X register.
     scx: u8,
 
-    /// Background pallete data.
+    /// Background palette data.
     bgp: u8,
 
-    /// Object Palette 0
+    /// Object palette 0
     obp0: u8,
 
-    /// Object Palette 1
+    /// Object palette 1
     obp1: u8,
 
-    /// Window X Coordinate - 7
+    /// Window X coordinate - 7.
     wx: u8,
 
-    /// Window Y Coordinate
+    /// Window Y coordinate.
     wy: u8,
+
+    /// Internal window line counter.
+    /// If a window is enabled, disabled and then enabled again
+    /// the window rendering will continue off from the line that it
+    /// last rendered.
+    /// This is reset after every frame.
+    window_line: u8,
 
     /// The current mode the PPU is in.
     current_mode: PpuModes,
@@ -136,6 +144,7 @@ impl MemInterface for Ppu {
         match addr {
             0x8000..=0x9FFF => self.vram[(addr - 0x8000) as usize],
             0xFE00..=0xFE9F => self.oam[(addr - 0xFE00) as usize],
+
             0xFF40 => self.lcdc.bits(),
             0xFF41 => (self.current_mode as u8) | self.stat.bits() | (1 << 7),
             0xFF42 => self.scy,
@@ -156,11 +165,12 @@ impl MemInterface for Ppu {
         match addr {
             0x8000..=0x9FFF => self.vram[(addr - 0x8000) as usize] = value,
             0xFE00..=0xFE9F => self.oam[(addr - 0xFE00) as usize] = value,
+
             0xFF40 => self.lcdc = Lcdc::from_bits_truncate(value),
             0xFF41 => self.stat = Stat::from_bits_truncate(value),
             0xFF42 => self.scy = value,
             0xFF43 => self.scx = value,
-            0xFF44 => {}
+            0xFF44 => {} // LY is read only.
             0xFF45 => self.lyc = value,
             0xFF47 => self.bgp = value,
             0xFF48 => self.obp0 = value,
@@ -190,6 +200,7 @@ impl Ppu {
             obp1: 0,
             wx: 0,
             wy: 0,
+            window_line: 0,
             current_mode: PpuModes::OamSearch,
             total_cycles: 0,
             framebuffer: Box::new([0; 160 * 144 * 4]),
@@ -332,105 +343,111 @@ impl Ppu {
         ((r as u32) << 24) | ((g as u32) << 16) | ((b as u32) << 8) | (a as u32)
     }
 
-    // Render the background map with scroll for this scanline.
-    // TODO: Render Windows.
+    // Render the background map with scroll OR the window map for this scanline.
     fn render_background(&mut self) {
-        // This kind of disables windows and background
-        // drawing.
-        // Sprites not affected by this.
+        // The 0th bit of the LCDC when reset disables all forms
+        // of background and window rendering.
+        // (it also overrides the window enable bit)
+        // Note: This does not affect sprite rendering.
         if !self.lcdc.contains(Lcdc::BG_WIN_ENABLE) {
             return;
         }
 
-        // If we are rendering a window.
-        let rendering_window = self.wy <= self.ly && self.lcdc.contains(Lcdc::WINDOW_ENABLE);
+        // If this is a new frame, reset the window line counter.
+        if self.ly == 0 {
+            self.window_line = 0;
+        }
 
-        // The top left X coordinate of the window.
-        let window_x = self.wx.saturating_sub(7);
-
-        // The address of the window tile map that is to
-        // be rendered minus 0x8000.
-        let win_tile_map: u16 = if self.lcdc.contains(Lcdc::WINDOW_SELECT) {
+        // The tile map that is going to be used to render
+        // the window.
+        let win_map = if self.lcdc.contains(Lcdc::WINDOW_SELECT) {
             0x1C00
         } else {
             0x1800
         };
 
-        // The address of the background tile map that is to
-        // be rendered minus 0x8000.
-        let bg_tile_map: u16 = if self.lcdc.contains(Lcdc::BG_SELECT) {
+        // The tile map that is going to be used to render
+        // the background.
+        let bgd_map = if self.lcdc.contains(Lcdc::BG_SELECT) {
             0x1C00
         } else {
             0x1800
         };
 
-        // The address of the tile data that
-        // is going to be used for rendering minus 0x8000.
-        let tile_data: u16 = if self.lcdc.contains(Lcdc::TILE_DATA) {
+        // The tile data that is going to be used for rendering
+        // the above tile maps.
+        let tile_data = if self.lcdc.contains(Lcdc::TILE_DATA) {
             0x0000
         } else {
             0x1000
         };
 
-        for col in 0u8..160u8 {
-            // The coordinates we are interested in tile map, and the
-            // tile map itself.
-            let (x, y, tile_map) = if rendering_window && window_x <= col {
-                let y = self.ly - self.wy;
-                let x = col - window_x;
+        // If the window is enabled this line, we increment the internal line counter.
+        let mut increment_window_counter = false;
 
-                (x, y, win_tile_map)
+        for x in 0u8..160u8 {
+            // Extract the absolute X and Y coordinates of the pixel in the respective 256 x 256 tile map.
+            let (map_x, map_y, tile_map) = if self.lcdc.contains(Lcdc::WINDOW_ENABLE)
+                && self.wy <= self.ly
+                && self.wx <= x + 7
+            {
+                let map_x = x.wrapping_add(7).wrapping_sub(self.wx);
+                let map_y = self.window_line;
+
+                increment_window_counter = true;
+
+                (map_x, map_y, win_map)
             } else {
-                let y = self.ly.wrapping_add(self.scy);
-                let x = col.wrapping_add(self.scx);
+                let map_x = x.wrapping_add(self.scx);
+                let map_y = self.ly.wrapping_add(self.scy);
 
-                (x, y, bg_tile_map)
+                (map_x, map_y, bgd_map)
             };
 
-            // What tile number the coordinates correspond to.
-            // Each tile is 8 pixels wide and 8 pixels tall, and
-            // the background/window is 32 by 32 tiles in size.
-            let tile_number_index = tile_map + (((y as u16 / 8) << 5) + (x as u16 / 8));
+            // Extract the X and Y coordinates of the pixel inside the
+            // respective tile.
+            let tile_x = map_x & 0x07;
+            let tile_y = map_y & 0x07;
+
+            // Extract the the tile number.
+            // Each tile is 8 x 8 pixels, and
+            // the background or window map is 32 by 32 tiles in size.
+            // We first extract the index of the tile number.
+            // The map has a range of 0x400 bytes and each row in the map has
+            // 0x20 bytes.
+            let tile_number_index =
+                tile_map + (((map_y as u16 >> 3) << 5) & 0x3FF) + ((map_x as u16 >> 3) & 0x1F);
+
             let tile_number = self.vram[tile_number_index as usize];
 
-            // The row of the tile we are interested in.
-            // (Each row is of two bytes).
-            let row = ((y % 8) << 1) as u16;
-
-            // Here we get the tile address.
-            // There are two addressing modes.
-            // 1. Unsigned Mode (0x8000): (TILE_NUMBER * 16) + 0x8000.
-            // 2. Signed Mode (0x8800): (TILE_NUMBER * 16) + 09000.
+            // Extract the address of the row we are rendering in the concerned tile.
+            // There are two addressing modes,
             //
-            // In the first method the TILE_NUMBER is treated as u8,
-            // in the second method it is treated as i8.
+            // 1. 0x8000: (TILE_NUMBER as u8 * 16) + 0x8000.
+            // 2. 0x8800: (TILE_NUMBER as i8 * 16) + 09000.
             let address = if tile_data == 0x0000 {
-                // Unsigned addressing mode.
-                tile_data + ((tile_number as u16) << 4) + row
+                tile_data + ((tile_number as u16) << 4) + (tile_y << 1) as u16
             } else {
-                // Signed addressing mode.
                 tile_data
                     .wrapping_add(((tile_number as i8 as i16) as u16) << 4)
-                    .wrapping_add(row)
+                    .wrapping_add((tile_y << 1) as u16)
             } as usize;
 
-            // The two bytes of the row.
-            // Remember LITTLE ENDIAN.
-            let byte_two = self.vram[address];
-            let byte_one = self.vram[address + 1];
+            // Extract the colour data pertaining to the row.
+            let lsb = self.vram[address];
+            let msb = self.vram[address + 1];
 
-            // The colour pallete index.
-            let tile_col = x % 8;
-            let colour = (((byte_one >> (7 - tile_col)) & 0x01) << 1)
-                | ((byte_two >> (7 - tile_col)) & 0x01);
-            let pallete_index = (self.bgp >> (colour << 1)) & 0x03;
+            // Extract the pixel colour as specified by the particular ROM's palette.
+            let custom_colour =
+                (((msb >> (7 - tile_x)) & 0x01) << 1) | ((lsb >> (7 - tile_x)) & 0x01);
 
-            // The actual colour of the pixel.
-            let colour = COLOR_PALETTE[pallete_index as usize];
+            // Extract the actual pixel colour, that we are going to use.
+            let actual_colour = COLOR_PALETTE[((self.bgp >> (custom_colour << 1)) & 0x03) as usize];
 
-            // Draw the pixel.
-            self.draw_pixel(col, self.ly, colour);
+            self.draw_pixel(x, self.ly, actual_colour);
         }
+
+        self.window_line += increment_window_counter as u8;
     }
 
     /// Render the sprites present on this scanline.
