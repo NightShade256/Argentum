@@ -69,6 +69,22 @@ bitflags! {
     }
 }
 
+/// Represents sprite data as stored in OAM.
+#[derive(Clone, Copy)]
+struct Sprite {
+    /// The Y coordinate of the sprite.
+    y: u8,
+
+    /// The X coordinate of the sprite.
+    x: u8,
+
+    /// The tile number of the sprite.
+    tile_number: u8,
+
+    /// Sprite flags like x flip, etc...
+    flags: u8,
+}
+
 /// Enumerates all the different modes the PPU can be in.
 #[derive(Clone, Copy)]
 #[repr(u8)]
@@ -458,9 +474,8 @@ impl Ppu {
             return;
         }
 
-        // The 2nd bit of LCDC controls the sprite size.
-        // If it is enabled sprites are 16 units tall.
-        // If not then they are 8 units tall.
+        // If the 2nd bit of LCDC is reset the sprite's size is taken to
+        // be 8 x 8 else it's 8 x 16.
         let sprite_size = if self.lcdc.contains(Lcdc::SPRITE_SIZE) {
             16
         } else {
@@ -474,49 +489,78 @@ impl Ppu {
         // The requirements for a sprite to be visible are,
         // 1. Y COORD <= LY
         // 2. Y COORD + SPRITE SIZE > LY
-        let mut sprites = Vec::with_capacity(40);
+        let mut sprites = self
+            .oam
+            .chunks_exact(4)
+            .filter_map(|entry| {
+                if let [y, x, tile_number, flags] = *entry {
+                    let y = y.wrapping_sub(16);
+                    let x = x.wrapping_sub(8);
 
-        for entry in self.oam.chunks_exact(4) {
-            // If we hit 10 sprites already, break since
-            // we cannot have more than 10 on one scanline.
-            if sprites.len() >= 40 {
-                break;
-            }
+                    // In 8 x 16 sprite mode, the 0th bit of the tile number
+                    // is ignored.
+                    let tile_number = if sprite_size == 16 {
+                        tile_number & 0xFE
+                    } else {
+                        tile_number
+                    };
 
-            // Corrected Y coordinate.
-            // Sprites with Y coord 16 are fully visible on screen.
-            // For sprites that are 8x8 it doesn't matter though.
-            let y_coord = entry[0].wrapping_sub(16);
-
-            // Check for the above conditions.
-            if y_coord <= self.ly && self.ly < y_coord.wrapping_add(sprite_size) {
-                for i in entry {
-                    sprites.push(*i);
+                    if y <= self.ly && self.ly < y.wrapping_add(sprite_size) {
+                        Some(Sprite {
+                            y,
+                            x,
+                            tile_number,
+                            flags,
+                        })
+                    } else {
+                        None
+                    }
+                } else {
+                    None
                 }
+            })
+            .take(10)
+            .enumerate()
+            .collect::<Vec<(usize, Sprite)>>();
+
+        // Sort the sprites in a way that,
+        //
+        // 1. The sprite that has the lower X coordinate will draw
+        //    over the sprite that has a higher X coordinate.
+        // 2. The sprite that appeared earlier in the OAM RAM will draw
+        //    over the sprite with same X coordinates.
+        sprites.sort_by(|&a, &b| {
+            use std::cmp::Ordering;
+
+            let res = a.1.x.cmp(&b.1.x);
+
+            if let Ordering::Equal = res {
+                // X coordinates are equal,
+                // therefore the one that appeared earlier wins.
+                // BUT we reverse the order since we have to draw the sprite
+                // over the other.
+                a.0.cmp(&b.0).reverse()
+            } else {
+                // Here the lower X wins.
+                // BUT we reverse the order since we have to draw the sprite
+                // over the other.
+                res.reverse()
             }
-        }
+        });
 
         // Render the sprites.
-        for entry in sprites.chunks_exact(4) {
-            // The corrected coordinates of the sprite.
-            // Explained above.
-            let x_coord = entry[1].wrapping_sub(8);
-            let y_coord = entry[0].wrapping_sub(16);
-
-            // The tile number associated with the sprite.
-            let tile_number = entry[2];
-
-            // Various sprite attributes.
-            let objattr = entry[3];
+        for (_, sprite) in sprites {
+            // Extract sprite attributes.
+            let attributes = sprite.flags;
 
             // Is the sprite flipped over the Y axis.
-            let y_flip = (objattr & 0x40) != 0;
+            let y_flip = (attributes & 0x40) != 0;
 
             // Is the sprite flipped over the X axis.
-            let x_flip = (objattr & 0x20) != 0;
+            let x_flip = (attributes & 0x20) != 0;
 
             // The palette used to render the sprite.
-            let palette = if (objattr & 0x10) != 0 {
+            let palette = if (attributes & 0x10) != 0 {
                 self.obp1
             } else {
                 self.obp0
@@ -525,33 +569,32 @@ impl Ppu {
             // Should the sprite be drawn over the background layer.
             // If this is false, the sprite will only be drawn
             // if the colour of BG is NOT 1-3.
-            let sprite_over_bg = (objattr & 0x80) == 0;
+            let sprite_over_bg = (attributes & 0x80) == 0;
 
             // The row in the tile of the sprite.
-            let row = if y_flip {
-                sprite_size - (self.ly - y_coord + 1)
+            let tile_y = if y_flip {
+                sprite_size - (self.ly - sprite.y + 1)
             } else {
-                self.ly - y_coord
+                self.ly - sprite.y
             };
 
             // The address of the sprite tile.
-            let address = (((tile_number as u16) << 4) + ((row as u16) << 1)) as usize;
+            let address = (((sprite.tile_number as u16) << 4) + ((tile_y as u16) << 1)) as usize;
 
-            // Extract the actual tile data.
-            let byte_two = self.vram[address];
-            let byte_one = self.vram[address + 1];
+            // Extract the colour data pertaining to the row.
+            let lsb = self.vram[address];
+            let msb = self.vram[address + 1];
 
-            // Render the sprite.
-            for col in 0..8 {
-                let corrected_x = x_coord + col;
+            for x in 0..8 {
+                let actual_x = sprite.x + x;
 
-                if corrected_x <= 160 {
+                if actual_x <= 160 {
                     // Get the index of the colour.
                     // 0 - Is always transparent for sprites.
                     let colour_index = if x_flip {
-                        ((byte_one >> col & 0x01) << 1) | (byte_two >> col & 0x01)
+                        ((msb >> x & 0x01) << 1) | (lsb >> x & 0x01)
                     } else {
-                        ((byte_one >> (7 - col) & 0x01) << 1) | (byte_two >> (7 - col) & 0x01)
+                        ((msb >> (7 - x) & 0x01) << 1) | (lsb >> (7 - x) & 0x01)
                     };
 
                     // Extract the actual RGBA colour.
@@ -560,9 +603,9 @@ impl Ppu {
                     // We don't draw pixels that are transparent.
                     if colour_index != 0 {
                         if sprite_over_bg {
-                            self.draw_pixel(corrected_x, self.ly, colour);
-                        } else if self.get_pixel(corrected_x, self.ly) == COLOR_PALETTE[0] {
-                            self.draw_pixel(corrected_x, self.ly, colour)
+                            self.draw_pixel(actual_x, self.ly, colour);
+                        } else if self.get_pixel(actual_x, self.ly) == COLOR_PALETTE[0] {
+                            self.draw_pixel(actual_x, self.ly, colour)
                         }
                     }
                 }
