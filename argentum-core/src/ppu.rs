@@ -4,12 +4,6 @@ use bitflags::bitflags;
 
 use crate::common::MemInterface;
 
-// TODO
-//
-// 1. Resolve panics in debug mode.
-// 2. Fix issues with window rendering.
-// 3. General cleanup
-
 /// Palette for the framebuffer.
 /// 0 - White
 /// 1 - Light Gray
