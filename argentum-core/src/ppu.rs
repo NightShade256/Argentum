@@ -434,7 +434,7 @@ impl Ppu {
             // There are two addressing modes,
             //
             // 1. 0x8000: (TILE_NUMBER as u8 * 16) + 0x8000.
-            // 2. 0x8800: (TILE_NUMBER as i8 * 16) + 09000.
+            // 2. 0x8800: (TILE_NUMBER as i8 * 16) + 0x9000.
             let address = if tile_data == 0x0000 {
                 tile_data + ((tile_number as u16) << 4) + (tile_y << 1) as u16
             } else {

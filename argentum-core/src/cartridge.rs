@@ -14,17 +14,13 @@ const RAM_SIZES: [usize; 4] = [0x0000, 0x0500, 0x2000, 0x8000];
 /// Trait implemented by all cartridges.
 pub trait Cartridge: MemInterface {
     /// Return the title of the game.
-    fn game_title(&self) -> &str;
+    fn game_title(&self) -> String;
 }
 
 /// Cartridge with just two ROM banks.
-/// Code: 0x00
 pub struct RomOnly {
     /// Two ROM banks each of 4KB.
     memory: Box<[u8; 0x8000]>,
-
-    /// The title of the game.
-    title: String,
 }
 
 impl RomOnly {
@@ -36,11 +32,7 @@ impl RomOnly {
         let mut memory = Box::new([0; 0x8000]);
         memory.copy_from_slice(rom_buffer);
 
-        // Extract the game title.
-        let title_bytes = rom_buffer[0x0134..=0x143].to_vec();
-        let title = String::from_utf8(title_bytes).unwrap();
-
-        Self { memory, title }
+        Self { memory }
     }
 }
 
@@ -53,52 +45,47 @@ impl MemInterface for RomOnly {
 }
 
 impl Cartridge for RomOnly {
-    fn game_title(&self) -> &str {
-        self.title.as_str()
+    fn game_title(&self) -> String {
+        String::from_utf8_lossy(&self.memory[0x134..0x0143]).into()
     }
 }
 
-/// Probably the most sloppy implementation of MBC3.
+/// Cartridge with the MBC3 chip.
+/// Max 2MB ROM and 32KB RAM.
 pub struct Mbc3 {
-    /// ROM of variable length.
+    /// ROM with a maximum size of 2 MB.
     memory: Vec<u8>,
 
-    /// The current ROM bank that is mapped.
+    /// The ROM bank that is currently mapped
+    /// to the addresses 0x4000 to 0x7FFF.
     rom_bank: usize,
 
-    /// External RAM, if any.
-    eram: Vec<u8>,
+    /// External RAM with a maximum size of 32 KB.
+    external_ram: Vec<u8>,
 
-    /// Is ERAM enabled?
-    eram_enabled: bool,
+    /// Is the external RAM enabled currently enabled?
+    external_ram_enabled: bool,
 
-    /// The current ERAM bank that is mapped.
+    /// The current external RAM bank that is mapped
+    /// to the addresses 0xA000 to 0xBFFF.
     ram_bank: usize,
-
-    /// The title of the game.
-    title: String,
 }
 
 impl Mbc3 {
+    /// Create a new `Mbc3` instance.
     pub fn new(rom_buffer: &[u8]) -> Self {
         // Load ROM into memory.
         let mut memory = vec![0u8; rom_buffer.len()];
         memory.copy_from_slice(rom_buffer);
 
-        // Extract the game title.
-        let title_bytes = rom_buffer[0x0134..=0x143].to_vec();
-        let title = String::from_utf8(title_bytes).unwrap();
-
-        // Init ERAM, if any.
-        let eram_size = RAM_SIZES[rom_buffer[0x0149] as usize];
-        let eram = vec![0u8; eram_size];
+        // Initialize external ram if any.
+        let external_ram = vec![0u8; RAM_SIZES[rom_buffer[0x0149] as usize]];
 
         Self {
             memory,
-            eram,
-            eram_enabled: false,
-            title,
             rom_bank: 1,
+            external_ram,
+            external_ram_enabled: false,
             ram_bank: 0,
         }
     }
@@ -107,13 +94,15 @@ impl Mbc3 {
 impl MemInterface for Mbc3 {
     fn read_byte(&self, addr: u16) -> u8 {
         match addr {
-            // ROM
+            // Only ROM bank 0 is ever mapped to this range.
             0x0000..=0x3FFF => self.memory[addr as usize],
+
+            // Each bank is 0x4000 in length.
             0x4000..=0x7FFF => self.memory[(self.rom_bank * 0x4000) + (addr - 0x4000) as usize],
 
-            // ERAM
-            0xA000..=0xBFFF if self.eram_enabled => {
-                self.eram[(self.ram_bank * 0x2000) + (addr - 0xA000) as usize]
+            // We only read valid data if the external RAM was previously enabled.
+            0xA000..=0xBFFF if self.external_ram_enabled => {
+                self.external_ram[(self.ram_bank * 0x2000) + (addr - 0xA000) as usize]
             }
 
             _ => 0xFF,
@@ -122,14 +111,14 @@ impl MemInterface for Mbc3 {
 
     fn write_byte(&mut self, addr: u16, value: u8) {
         match addr {
-            // ERAM enable register.
+            // External RAM enable register.
             0x0000..=0x1FFF => {
-                self.eram_enabled = (value & 0x0F) == 0x0A;
+                self.external_ram_enabled = (value & 0x0F) == 0x0A;
             }
 
             // ROM bank register.
             // Bank 1 is implicitly selected on a 0x00 write.
-            // Since Bank 0 is always mapped to 0x0000 - 0x3FFF
+            // Since Bank 0 is always mapped to 0x0000 - 0x3FFF.
             0x2000..=0x3FFF => {
                 self.rom_bank = if value == 0 { 1 } else { value } as usize;
             }
@@ -139,9 +128,9 @@ impl MemInterface for Mbc3 {
                 self.ram_bank = value as usize;
             }
 
-            // ERAM
-            0xA000..=0xBFFF if self.eram_enabled => {
-                self.eram[(self.ram_bank * 0x2000) + (addr - 0xA000) as usize] = value;
+            // We only write data if the external RAM was previously enabled.
+            0xA000..=0xBFFF if self.external_ram_enabled => {
+                self.external_ram[(self.ram_bank * 0x2000) + (addr - 0xA000) as usize] = value;
             }
 
             _ => {}
@@ -150,7 +139,7 @@ impl MemInterface for Mbc3 {
 }
 
 impl Cartridge for Mbc3 {
-    fn game_title(&self) -> &str {
-        self.title.as_str()
+    fn game_title(&self) -> String {
+        String::from_utf8_lossy(&self.memory[0x134..0x0143]).into()
     }
 }

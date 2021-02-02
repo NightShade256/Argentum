@@ -24,7 +24,7 @@ impl GameBoy {
     }
 
     /// Return the title of the game.
-    pub fn game_title(&self) -> &str {
+    pub fn game_title(&self) -> String {
         self.bus.cartridge.game_title()
     }
 
