@@ -31,15 +31,15 @@ and to execute a ROM,
 
 ### Games
 
-<img src="./assets/Pokemon.png" width="300">
-<img src="./assets/Zelda.png" width="300">
-<img src="./assets/Tetris.png" width="300">
+<img src="./assets/Pokemon.png" width="300"> &nbsp;
+<img src="./assets/Zelda.png" width="300"> &nbsp;
+<img src="./assets/Tetris.png" width="300"> &nbsp;
 
 ### Test ROM(s)
 
-<img src="./assets/cpu_instrs.png" width="300">
-<img src="./assets/instr_timing.png" width="300">
-<img src="./assets/dmg_acid2.png" width="300">
+<img src="./assets/cpu_instrs.png" width="300"> &nbsp;
+<img src="./assets/instr_timing.png" width="300"> &nbsp;
+<img src="./assets/dmg_acid2.png" width="300"> &nbsp;
 
 ## Acknowledgements
 
