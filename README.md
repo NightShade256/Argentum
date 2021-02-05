@@ -4,21 +4,18 @@ A simple Game Boy (DMG) emulator written in Rust.
 
 ## About
 
-This project is a just a toy emulator to know more about emulation
-and have fun while doing so.
+This is a toy emulator. I wrote this emulator to learn more about emulation.
+This emulator is not bug-free, nor it should be taken as a reference.
 
-This is not a complete emulator by any means, nor is it bug free.
-This is not an accurate emulator, nor should it be taken as a reference.
+Some features missing from this emulator are,
 
-This emulator implements the almost all things except,
-
-1. Audio Processing Unit (APU)
-2. MBC1, MBC5 and more...
-3. CGB Mode.
+1. APU (Audio Processing Unit)
+2. MBC2, MBC5, and some other mappers.
+3. CGB support.
 
 ## Building
 
-Just run
+You can build the project using `cargo`.
 
 ```bash
 cargo build --release
@@ -27,8 +24,22 @@ cargo build --release
 and to execute a ROM,
 
 ```bash
-./argentum-gb <ROM FILE with EXTENSION>
+./argentum-gb <ROM FILE>
 ```
+
+## Screenshots
+
+### Games
+
+![Pokemon Blue](./assets/Pokemon.png)
+![Legend of Zelda - Link's Awakening](./assets/Zelda.png)
+![Tetris](./assets/Tetris.png)
+
+### Test ROM(s)
+
+![cpu_instrs](./assets/cpu_instrs.png)
+![instr_timing](./assets/instr_timing.png)
+![dmg_acid2](./assets/dmg_acid2.png)
 
 ## Acknowledgements
 
@@ -36,28 +47,25 @@ The emulator would not be possible without the following resources,
 
 ### Documentation and References
 
-1. https://gbdev.io/pandocs/
-2. https://izik1.github.io/gbops/index.html
-3. https://rgbds.gbdev.io/docs/v0.4.1/gbz80.7
-4. https://hacktix.github.io/GBEDG/
-5. https://gekkio.fi/files/gb-docs/gbctr.pdf
-6. https://cdn.discordapp.com/attachments/465586075830845475/742438340078469150/SM83_decoding.pdf
+1. [Pandocs](https://gbdev.io/pandocs/)
+2. [Izik's Opcode Map](https://izik1.github.io/gbops/index.html)
+3. [RGBDS](https://rgbds.gbdev.io/docs/v0.4.1/gbz80.7)
+4. [Optix's GBEDG](https://hacktix.github.io/GBEDG/)
+5. [Game Boy - Complete Technical Reference](https://gekkio.fi/files/gb-docs/gbctr.pdf)
+6. [wheremyfoodat's SM83 Instruction Decoding Guide](https://cdn.discordapp.com/attachments/465586075830845475/742438340078469150/SM83_decoding.pdf)
 
 ### Other Emulators
 
-1. BGB and its excellent debugger.
-2. https://github.com/Gekkio/mooneye-gb
-3. https://github.com/Kappamalone/PurpleBoy
-4. https://github.com/wheremyfoodat/Beeg-Boy
-5. https://github.com/mohanson/gameboy
+1. [BGB](http://bgb.bircd.org/)
+2. [Mooneye GB - Gekkio](https://github.com/Gekkio/mooneye-gb)
+3. [Purple Boy - Kappamalone](https://github.com/Kappamalone/PurpleBoy)
+4. [Beeg-Boy - wheremyfoodat](https://github.com/wheremyfoodat/Beeg-Boy)
+5. [CryBoy - Matthew Berry](https://github.com/mattrberry/CryBoy)
 
 ### Blogs and Talks
 
-1. http://emudev.de/gameboy-emulator/overview/
-2. http://www.codeslinger.co.uk/ (The website is sadly down, but you can use the wayback machine).
-3. https://www.youtube.com/watch?v=HyzD8pNlpwI (Ultimate Game Boy Talk - Michael Steil)
-
-and more...
+1. [[emudev]](http://emudev.de/gameboy-emulator/overview/)
+2. [Ultimate Game Boy Talk - Michael Steil](https://www.youtube.com/watch?v=HyzD8pNlpwI)
 
 ## License
 
