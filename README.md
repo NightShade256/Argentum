@@ -31,15 +31,15 @@ and to execute a ROM,
 
 ### Games
 
-![Pokemon Blue](./assets/Pokemon.png)
-![Legend of Zelda - Link's Awakening](./assets/Zelda.png)
-![Tetris](./assets/Tetris.png)
+<img src="./assets/Pokemon.png" width="300">
+<img src="./assets/Zelda.png" width="300">
+<img src="./assets/Tetris.png" width="300">
 
 ### Test ROM(s)
 
-![cpu_instrs](./assets/cpu_instrs.png)
-![instr_timing](./assets/instr_timing.png)
-![dmg_acid2](./assets/dmg_acid2.png)
+<img src="./assets/cpu_instrs.png" width="300">
+<img src="./assets/instr_timing.png" width="300">
+<img src="./assets/dmg_acid2.png" width="300">
 
 ## Acknowledgements
 
