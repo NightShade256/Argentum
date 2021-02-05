@@ -31,6 +31,10 @@ pub struct Bus {
 
     // IE flag, mapped to 0xFFFF.
     pub ie_flag: u8,
+
+    // NR50 - Sound Control
+    // Just a stub.
+    nr50: u8,
 }
 
 impl MemInterface for Bus {
@@ -66,6 +70,9 @@ impl MemInterface for Bus {
 
             // IF register.
             0xFF0F => self.if_flag,
+
+            // Sound (Stub)
+            0xFF24 => self.nr50,
 
             // PPU registers.
             0xFF40..=0xFF45 | 0xFF47..=0xFF4B => self.ppu.read_byte(addr),
@@ -118,6 +125,9 @@ impl MemInterface for Bus {
             // IF register.
             0xFF0F => self.if_flag = value,
 
+            // Sound (Stub)
+            0xFF24 => self.nr50 = value,
+
             // PPU registers.
             0xFF40..=0xFF45 | 0xFF47..=0xFF4B => self.ppu.write_byte(addr, value),
 
@@ -162,6 +172,7 @@ impl Bus {
             ppu: Ppu::new(),
             if_flag: 0,
             ie_flag: 0,
+            nr50: 0,
         }
     }
 
@@ -171,6 +182,8 @@ impl Bus {
         self.ppu.write_byte(0xFF47, 0xFC);
         self.ppu.write_byte(0xFF48, 0xFF);
         self.ppu.write_byte(0xFF49, 0xFF);
+
+        self.nr50 = 0x77;
     }
 
     /// Tick all the components on the bus by the given T-cycles.

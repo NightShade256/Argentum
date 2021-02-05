@@ -27,6 +27,8 @@ and to execute a ROM,
 ./argentum-gb <ROM FILE>
 ```
 
+Binaries are provided in a Releases.
+
 ## Screenshots
 
 ### Games
