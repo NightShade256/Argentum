@@ -580,7 +580,7 @@ impl Ppu {
             let msb = self.vram[address + 1];
 
             for x in 0..8 {
-                let actual_x = sprite.x + x;
+                let actual_x = sprite.x.wrapping_add(x);
 
                 if actual_x <= 160 {
                     // Get the index of the colour.

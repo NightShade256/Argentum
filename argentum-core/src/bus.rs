@@ -12,7 +12,7 @@ pub struct Bus {
     pub cartridge: Box<dyn Cartridge>,
 
     // 8 KB of Work RAM.
-    pub wram: Box<[u8; 0x2000]>,
+    pub work_ram: Box<[u8; 0x2000]>,
 
     // High RAM.
     pub high_ram: Box<[u8; 0x7F]>,
@@ -47,10 +47,10 @@ impl MemInterface for Bus {
             0xA000..=0xBFFF => self.cartridge.read_byte(addr),
 
             // Work RAM.
-            0xC000..=0xDFFF => self.wram[(addr - 0xC000) as usize],
+            0xC000..=0xDFFF => self.work_ram[(addr - 0xC000) as usize],
 
             // Echo RAM.
-            0xE000..=0xFDFF => self.wram[(addr - 0xE000) as usize],
+            0xE000..=0xFDFF => self.work_ram[(addr - 0xE000) as usize],
 
             // OAM RAM, rerouted to PPU.
             0xFE00..=0xFE9F => self.ppu.read_byte(addr),
@@ -98,10 +98,10 @@ impl MemInterface for Bus {
             0xA000..=0xBFFF => self.cartridge.write_byte(addr, value),
 
             // Work RAM.
-            0xC000..=0xDFFF => self.wram[(addr - 0xC000) as usize] = value,
+            0xC000..=0xDFFF => self.work_ram[(addr - 0xC000) as usize] = value,
 
             // Echo RAM.
-            0xE000..=0xFDFF => self.wram[(addr - 0xE000) as usize] = value,
+            0xE000..=0xFDFF => self.work_ram[(addr - 0xE000) as usize] = value,
 
             // OAM RAM, rerouted to PPU.
             0xFE00..=0xFE9F => self.ppu.write_byte(addr, value),
@@ -147,14 +147,15 @@ impl Bus {
     pub fn new(rom_buffer: &[u8]) -> Self {
         let cartridge: Box<dyn Cartridge> = match rom_buffer[0x0147] {
             0x00 => Box::new(RomOnly::new(rom_buffer)),
+            0x01..=0x03 => Box::new(Mbc1::new(rom_buffer)),
             0x0F..=0x13 => Box::new(Mbc3::new(rom_buffer)),
 
-            _ => panic!("ROM ONLY + MBC3 cartridges are all that is currently supported."),
+            _ => panic!("ROM ONLY + MBC1 + MBC3 cartridges are all that is currently supported."),
         };
 
         Self {
             cartridge,
-            wram: Box::new([0; 0x2000]),
+            work_ram: Box::new([0; 0x2000]),
             high_ram: Box::new([0; 0x7F]),
             timers: Timers::new(),
             joypad: Joypad::new(),
