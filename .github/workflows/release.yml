@@ -1,0 +1,71 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Setup Rust.
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+      - name: Build Binary
+        run: cargo build --release
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: windows-artifact
+          path: target/release/argentum-gb.exe
+
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Install Required Packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libgtk-3-dev libasound2-dev
+      - name: Setup Rust.
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+      - name: Build Binary
+        run: cargo build --release
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: linux-artifact
+          path: target/release/argentum-gb
+
+  create-release:
+    runs-on: ubuntu-latest
+    needs: [build-windows, build-linux]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v2
+      - name: Rename Artifacts
+        run: |
+          mv ./windows-artifact/argentum-gb.exe ./argentum-gb-win.exe
+          mv ./linux-artifact/argentum-gb ./argentum-gb-gnu.run
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            argentum-gb-win.exe
+            argentum-gb-gnu.run
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

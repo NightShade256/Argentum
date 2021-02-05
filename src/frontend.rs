@@ -77,7 +77,7 @@ pub fn start() {
 
     // Create a event loop, and initialize the display.
     let event_loop = EventLoop::new();
-    let display = initialize_display(&event_loop, argentum.game_title());
+    let display = initialize_display(&event_loop, &argentum.game_title());
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::MainEventsCleared => {
