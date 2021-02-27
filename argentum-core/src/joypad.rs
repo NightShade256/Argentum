@@ -83,6 +83,7 @@ impl Joypad {
     pub fn tick(&mut self, _: u32, if_reg: &mut u8) {
         if self.irq {
             *if_reg |= 0b0001_0000;
+            self.irq = false;
         }
     }
 
