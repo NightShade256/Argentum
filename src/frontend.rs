@@ -8,18 +8,17 @@ use glium::glutin::{
 use glium::{texture::RawImage2d, uniforms::MagnifySamplerFilter};
 use glium::{BlitTarget, Display, Surface, Texture2d};
 
-use argentum_core::gameboy::GameBoy;
-use argentum_core::joypad::GbKey;
+use argentum_core::{GameBoy, GbKey};
 
 /// Initialize the window, and then glium's
 /// display.
-fn initialize_display(event_loop: &EventLoop<()>, title: &str) -> Display {
+fn initialize_display(event_loop: &EventLoop<()>) -> Display {
     // Create window and OpenGL context builders.
     let cb = ContextBuilder::new().with_vsync(true);
 
     let wb = WindowBuilder::new()
         .with_decorations(true)
-        .with_title(format!("Argentum GB - {}", title))
+        .with_title("Argentum GB")
         .with_min_inner_size(LogicalSize::new(160, 144))
         .with_inner_size(LogicalSize::new(480, 432));
 
@@ -49,8 +48,8 @@ fn handle_input(gb: &mut GameBoy, input: &KeyboardInput) {
             VirtualKeyCode::D => Some(GbKey::RIGHT),
             VirtualKeyCode::Return => Some(GbKey::START),
             VirtualKeyCode::Space => Some(GbKey::SELECT),
-            VirtualKeyCode::Z => Some(GbKey::BUTTONA),
-            VirtualKeyCode::X => Some(GbKey::BUTTONB),
+            VirtualKeyCode::Z => Some(GbKey::BUTTON_A),
+            VirtualKeyCode::X => Some(GbKey::BUTTON_B),
             _ => None,
         };
 
@@ -77,7 +76,7 @@ pub fn start() {
 
     // Create a event loop, and initialize the display.
     let event_loop = EventLoop::new();
-    let display = initialize_display(&event_loop, &argentum.game_title());
+    let display = initialize_display(&event_loop);
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::MainEventsCleared => {

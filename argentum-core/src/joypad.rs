@@ -13,8 +13,8 @@ bitflags! {
         const DOWN = 0b0000_1000;
 
         // Normal Buttons.
-        const BUTTONA = 0b0001_0000;
-        const BUTTONB = 0b0010_0000;
+        const BUTTON_A = 0b0001_0000;
+        const BUTTON_B = 0b0010_0000;
         const SELECT = 0b0100_0000;
         const START = 0b1000_0000;
     }
@@ -45,8 +45,8 @@ impl MemInterface for Joypad {
         if self.buttons {
             byte |= (self.state.contains(GbKey::START) as u8) << 3;
             byte |= (self.state.contains(GbKey::SELECT) as u8) << 2;
-            byte |= (self.state.contains(GbKey::BUTTONB) as u8) << 1;
-            byte |= self.state.contains(GbKey::BUTTONA) as u8;
+            byte |= (self.state.contains(GbKey::BUTTON_B) as u8) << 1;
+            byte |= self.state.contains(GbKey::BUTTON_A) as u8;
         }
 
         if self.directional {

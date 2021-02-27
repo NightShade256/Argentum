@@ -64,6 +64,23 @@ pub enum Reg8 {
     A,
 }
 
+impl From<u8> for Reg8 {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => Reg8::B,
+            1 => Reg8::C,
+            2 => Reg8::D,
+            3 => Reg8::E,
+            4 => Reg8::H,
+            5 => Reg8::L,
+            6 => Reg8::HL,
+            7 => Reg8::A,
+
+            _ => unreachable!(),
+        }
+    }
+}
+
 impl Registers {
     /// Create a new empty `Registers` instance.
     pub fn new() -> Self {

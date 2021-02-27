@@ -1,10 +1,13 @@
 #![allow(clippy::new_without_default)]
 
-pub mod bus;
-pub mod cartridge;
-pub mod common;
-pub mod cpu;
-pub mod gameboy;
-pub mod joypad;
-pub mod ppu;
-pub mod timers;
+mod bus;
+mod cartridge;
+mod common;
+mod cpu;
+mod gameboy;
+mod joypad;
+mod ppu;
+mod timers;
+
+pub use gameboy::GameBoy;
+pub use joypad::GbKey;

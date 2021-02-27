@@ -133,26 +133,22 @@ impl Cpu {
             0x04 | 0x14 | 0x24 | 0x34 | 0x0C | 0x1C | 0x2C | 0x3C => {
                 let bit_rep = (opcode >> 3) & 0x7;
 
-                let r8 = unsafe { std::mem::transmute(bit_rep) };
-                self.inc_r8(bus, r8);
+                self.inc_r8(bus, bit_rep.into());
             }
 
             // DEC r8
             0x05 | 0x15 | 0x25 | 0x35 | 0x0D | 0x1D | 0x2D | 0x3D => {
                 let bit_rep = (opcode >> 3) & 0x7;
 
-                let r8 = unsafe { std::mem::transmute(bit_rep) };
-                self.dec_r8(bus, r8);
+                self.dec_r8(bus, bit_rep.into());
             }
 
             // LD r8, u8
             0x06 | 0x16 | 0x26 | 0x36 | 0x0E | 0x1E | 0x2E | 0x3E => {
                 let bit_rep = (opcode >> 3) & 0x7;
-
-                let r8 = unsafe { std::mem::transmute(bit_rep) };
                 let imm = self.imm_byte(bus);
 
-                self.r.write_r8(r8, bus, imm);
+                self.r.write_r8(bit_rep.into(), bus, imm);
             }
 
             // MISC OPS
@@ -168,13 +164,10 @@ impl Cpu {
             // LD r8, r8
             0x40..=0x7F if opcode != 0x76 => {
                 let src_bit_rep = opcode & 0x7;
-                let dest_bit_rep = (opcode >> 3) & 0x7;
+                let dst_bit_rep = (opcode >> 3) & 0x7;
 
-                let src = unsafe { std::mem::transmute(src_bit_rep) };
-                let dest = unsafe { std::mem::transmute(dest_bit_rep) };
-
-                let r8v = self.r.read_r8(src, bus);
-                self.r.write_r8(dest, bus, r8v);
+                let r8v = self.r.read_r8(src_bit_rep.into(), bus);
+                self.r.write_r8(dst_bit_rep.into(), bus, r8v);
             }
 
             // ALU A, r8
@@ -182,9 +175,7 @@ impl Cpu {
                 let bit_rep = opcode & 0x7;
                 let index = ((opcode >> 3) & 0x7) as usize;
 
-                let r8 = unsafe { std::mem::transmute(bit_rep) };
-
-                let r8v = self.r.read_r8(r8, bus);
+                let r8v = self.r.read_r8(bit_rep.into(), bus);
                 OPCODE_GROUP_TWO[index](self, r8v);
             }
 
@@ -304,36 +295,28 @@ impl Cpu {
                         let bit_rep = opcode & 0x7;
                         let index = ((opcode >> 3) & 0x7) as usize;
 
-                        let r8 = unsafe { std::mem::transmute(bit_rep) };
-
-                        OPCODE_GROUP_THR[index](self, bus, r8);
+                        OPCODE_GROUP_THR[index](self, bus, bit_rep.into());
                     }
 
                     0x40..=0x7F => {
                         let bit_rep = opcode & 0x7;
                         let bit = (opcode >> 3) & 0x7;
 
-                        let r8 = unsafe { std::mem::transmute(bit_rep) };
-
-                        self.bit_r8(bus, r8, bit);
+                        self.bit_r8(bus, bit_rep.into(), bit);
                     }
 
                     0x80..=0xBF => {
                         let bit_rep = opcode & 0x7;
                         let bit = (opcode >> 3) & 0x7;
 
-                        let r8 = unsafe { std::mem::transmute(bit_rep) };
-
-                        self.res_r8(bus, r8, bit);
+                        self.res_r8(bus, bit_rep.into(), bit);
                     }
 
                     0xC0..=0xFF => {
                         let bit_rep = opcode & 0x7;
                         let bit = (opcode >> 3) & 0x7;
 
-                        let r8 = unsafe { std::mem::transmute(bit_rep) };
-
-                        self.set_r8(bus, r8, bit);
+                        self.set_r8(bus, bit_rep.into(), bit);
                     }
                 }
             }
