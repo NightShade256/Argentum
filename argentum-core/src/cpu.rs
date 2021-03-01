@@ -36,10 +36,12 @@ impl CPU {
     }
 
     /// Read a byte from the current PC address.
-    pub fn imm_byte(&mut self, bus: &mut Bus) -> u8 {
+    pub fn imm_byte(&mut self, bus: &Bus) -> u8 {
         let value = bus.read_byte(self.r.pc);
         self.r.pc += 1;
 
         value
     }
+
+    pub fn internal_cycle(&self, _bus: &mut Bus) {}
 }
