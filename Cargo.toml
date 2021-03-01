@@ -11,4 +11,3 @@ edition = "2018"
 
 [dependencies]
 argentum-core = { path = "./argentum-core" }
-glium = "0.29.0"

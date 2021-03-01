@@ -1,5 +1,3 @@
-mod frontend;
-
 fn main() {
-    frontend::start();
+    println!("Hello, World!");
 }

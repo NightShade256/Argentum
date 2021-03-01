@@ -1,18 +1,13 @@
-//! Contains helper struct `Registers` with methods
-//! to access 16 bit combined versions of the regular
-//! 8 bit registers.
+//! Helper functions for reading, writing registers.
 
 use bitflags::bitflags;
 
-use crate::bus::Bus;
-use crate::common::MemInterface;
-
 bitflags! {
     pub struct Flags: u8 {
-        const Z = 0b1000_0000;
-        const N = 0b0100_0000;
-        const H = 0b0010_0000;
-        const C = 0b0001_0000;
+        const Z = 1 << 7;
+        const N = 1 << 6;
+        const H = 1 << 5;
+        const C = 1 << 4;
     }
 }
 
@@ -20,7 +15,7 @@ pub struct Registers {
     // Accumulator.
     pub a: u8,
 
-    // General registers.
+    // General Purpose Registers.
     pub b: u8,
     pub c: u8,
     pub d: u8,
@@ -28,61 +23,16 @@ pub struct Registers {
     pub h: u8,
     pub l: u8,
 
-    // Flag register.
+    // Flag Register.
     pub f: Flags,
 
-    // Stack pointer.
+    // Stack Pointer, and Program Counter.
     pub sp: u16,
-
-    // Program counter.
     pub pc: u16,
 }
 
-/// Enumerates all 16 bit registers.
-#[derive(Clone, Copy)]
-pub enum Reg16 {
-    AF,
-    BC,
-    DE,
-    HL,
-    SP,
-
-    HLI, // HL, post inc.
-    HLD, // HL, post dec.
-}
-
-#[derive(Debug, Clone, Copy)]
-#[repr(u8)]
-pub enum Reg8 {
-    B = 0,
-    C,
-    D,
-    E,
-    H,
-    L,
-    HL, // [HL] aka byte pointed to by HL.
-    A,
-}
-
-impl From<u8> for Reg8 {
-    fn from(value: u8) -> Self {
-        match value {
-            0 => Reg8::B,
-            1 => Reg8::C,
-            2 => Reg8::D,
-            3 => Reg8::E,
-            4 => Reg8::H,
-            5 => Reg8::L,
-            6 => Reg8::HL,
-            7 => Reg8::A,
-
-            _ => unreachable!(),
-        }
-    }
-}
-
 impl Registers {
-    /// Create a new empty `Registers` instance.
+    /// Create a new `Registers` instance.
     pub fn new() -> Self {
         Self {
             a: 0,
@@ -90,143 +40,65 @@ impl Registers {
             c: 0,
             d: 0,
             e: 0,
+            f: Flags::empty(),
             h: 0,
             l: 0,
-            f: Flags::empty(),
             sp: 0,
             pc: 0,
         }
     }
 
-    /// Read the value of a 16 bit register.
-    pub fn read_r16(&mut self, r16: Reg16) -> u16 {
-        use Reg16::*;
-
-        match r16 {
-            AF => ((self.a as u16) << 8) | self.f.bits() as u16,
-            BC => ((self.b as u16) << 8) | self.c as u16,
-            DE => ((self.d as u16) << 8) | self.e as u16,
-            HL => ((self.h as u16) << 8) | self.l as u16,
-            SP => self.sp,
-
-            HLI => {
-                let value = ((self.h as u16) << 8) | self.l as u16;
-                self.write_r16(Reg16::HL, value.wrapping_add(1));
-
-                value
-            }
-
-            HLD => {
-                let value = ((self.h as u16) << 8) | self.l as u16;
-                self.write_r16(Reg16::HL, value.wrapping_sub(1));
-
-                value
-            }
-        }
-    }
-
-    /// Write a value to a 16 bit register.
-    pub fn write_r16(&mut self, r16: Reg16, value: u16) {
-        use Reg16::*;
-
-        match r16 {
-            AF => {
-                self.a = (value >> 8) as u8;
-                self.f = Flags::from_bits_truncate(value as u8);
-            }
-
-            BC => {
-                self.b = (value >> 8) as u8;
-                self.c = value as u8;
-            }
-
-            DE => {
-                self.d = (value >> 8) as u8;
-                self.e = value as u8;
-            }
-
-            HL => {
-                self.h = (value >> 8) as u8;
-                self.l = value as u8;
-            }
-
-            SP => self.sp = value,
-
-            _ => unreachable!(),
-        }
+    #[inline]
+    pub fn get_af(&self) -> u16 {
+        ((self.a as u16) << 8) | self.f.bits() as u16
     }
 
     #[inline]
-    pub fn read_r8(&mut self, r8: Reg8, bus: &Bus) -> u8 {
-        use Reg8::*;
-
-        match r8 {
-            B => self.b,
-            C => self.c,
-            D => self.d,
-            E => self.e,
-            H => self.h,
-            L => self.l,
-            A => self.a,
-
-            HL => bus.read_byte(self.read_r16(Reg16::HL)),
-        }
+    pub fn get_bc(&self) -> u16 {
+        ((self.b as u16) << 8) | self.c as u16
     }
 
     #[inline]
-    pub fn write_r8(&mut self, r8: Reg8, bus: &mut Bus, value: u8) {
-        use Reg8::*;
-
-        match r8 {
-            B => self.b = value,
-            C => self.c = value,
-            D => self.d = value,
-            E => self.e = value,
-            H => self.h = value,
-            L => self.l = value,
-            A => self.a = value,
-
-            HL => bus.write_byte(self.read_r16(Reg16::HL), value),
-        }
+    pub fn get_de(&self) -> u16 {
+        ((self.d as u16) << 8) | self.e as u16
     }
 
     #[inline]
-    pub fn get_zf(&self) -> bool {
-        self.f.contains(Flags::Z)
+    pub fn get_hl(&self) -> u16 {
+        ((self.h as u16) << 8) | self.l as u16
     }
 
     #[inline]
-    pub fn set_zf(&mut self, value: bool) {
-        self.f.set(Flags::Z, value);
+    pub fn set_af(&mut self, value: u16) {
+        self.a = (value >> 8) as u8;
+        self.f = Flags::from_bits_truncate(value as u8);
     }
 
     #[inline]
-    pub fn get_nf(&self) -> bool {
-        self.f.contains(Flags::N)
+    pub fn set_bc(&mut self, value: u16) {
+        self.b = (value >> 8) as u8;
+        self.c = value as u8;
     }
 
     #[inline]
-    pub fn set_nf(&mut self, value: bool) {
-        self.f.set(Flags::N, value);
+    pub fn set_de(&mut self, value: u16) {
+        self.d = (value >> 8) as u8;
+        self.e = value as u8;
     }
 
     #[inline]
-    pub fn get_hf(&self) -> bool {
-        self.f.contains(Flags::H)
+    pub fn set_hl(&mut self, value: u16) {
+        self.h = (value >> 8) as u8;
+        self.l = value as u8;
     }
 
     #[inline]
-    pub fn set_hf(&mut self, value: bool) {
-        self.f.set(Flags::H, value);
+    pub fn get_flag(&self, flag: Flags) -> bool {
+        self.f.contains(flag)
     }
 
     #[inline]
-    pub fn get_cf(&self) -> bool {
-        self.f.contains(Flags::C)
-    }
-
-    #[inline]
-    pub fn set_cf(&mut self, value: bool) {
-        self.f.set(Flags::C, value);
+    pub fn set_flag(&mut self, flag: Flags, value: bool) {
+        self.f.set(flag, value);
     }
 }
