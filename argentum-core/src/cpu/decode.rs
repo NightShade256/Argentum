@@ -18,10 +18,16 @@ impl CPU {
                 self.conditional_jr(bus, condition);
             }
 
+            0x01 | 0x11 | 0x21 | 0x31 => {
+                let r16 = (opcode >> 4) & 0x3;
+
+                self.ld_r16_u16(bus, r16);
+            }
+
             _ => log::warn!(
                 "Invalid operation code {:#04X} encountered at PC={:#06X}.",
                 opcode,
-                self.r.pc
+                self.reg.pc
             ),
         }
     }
