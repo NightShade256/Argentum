@@ -8,6 +8,7 @@ name = "argentum-gb"
 version = "0.1.0"
 authors = ["Anish Jewalikar <anishjewalikar@gmail.com>"]
 edition = "2018"
+license = "Apache-2.0"
 
 [dependencies]
 argentum-core = { path = "./argentum-core" }

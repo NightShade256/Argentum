@@ -6,10 +6,14 @@ pub struct Bus {
 
 impl Bus {
     /// Create a new `Bus` instance.
-    pub fn new() -> Self {
-        Self {
+    pub fn new(rom: &[u8]) -> Self {
+        let mut bus = Self {
             memory: Box::new([0; 0x10000]),
-        }
+        };
+
+        bus.memory[0x0000..=0x7FFF].copy_from_slice(rom);
+
+        bus
     }
 
     /// Read a byte from the given address.

@@ -1,6 +1,6 @@
-#![no_std]
+// #![no_std]
 
 extern crate alloc;
 
-mod bus;
-mod cpu;
+pub mod bus;
+pub mod cpu;

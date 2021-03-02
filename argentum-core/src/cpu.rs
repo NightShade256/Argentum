@@ -15,7 +15,7 @@ pub enum CpuState {
 
 pub struct CPU {
     // All the registers associated with the CPU.
-    reg: Registers,
+    pub reg: Registers,
 
     // The Interrupt Master Enable flag.
     // Interrupts are serviced iff this flag is enabled.
@@ -121,6 +121,40 @@ impl CPU {
 
                 _ => unreachable!(),
             },
+
+            _ => unreachable!(),
+        }
+    }
+
+    /// Read a R8 by specifiying its index.
+    /// See wheremyfoodat's decoding opcode PDF.
+    pub fn read_r8(&mut self, bus: &Bus, r8: u8) -> u8 {
+        match r8 {
+            0 => self.reg.b,
+            1 => self.reg.c,
+            2 => self.reg.d,
+            3 => self.reg.e,
+            4 => self.reg.h,
+            5 => self.reg.l,
+            6 => bus.read_byte(self.reg.get_hl()),
+            7 => self.reg.a,
+
+            _ => unreachable!(),
+        }
+    }
+
+    /// Write a value to R8 by specifiying its index.
+    /// See wheremyfoodat's decoding opcode PDF.
+    pub fn write_r8(&mut self, bus: &mut Bus, r8: u8, value: u8) {
+        match r8 {
+            0 => self.reg.b = value,
+            1 => self.reg.c = value,
+            2 => self.reg.d = value,
+            3 => self.reg.e = value,
+            4 => self.reg.h = value,
+            5 => self.reg.l = value,
+            6 => bus.write_byte(self.reg.get_hl(), value),
+            7 => self.reg.a = value,
 
             _ => unreachable!(),
         }
