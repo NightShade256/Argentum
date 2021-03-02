@@ -26,8 +26,12 @@ impl CPU {
         let lower = self.imm_byte(bus);
         let upper = self.imm_byte(bus);
 
-        bus.write_byte(self.reg.sp, lower);
-        bus.write_byte(self.reg.sp + 1, upper);
+        let address = u16::from_le_bytes([lower, upper]);
+
+        let [sp_lower, sp_upper] = self.reg.sp.to_le_bytes();
+
+        bus.write_byte(address, sp_lower);
+        bus.write_byte(address + 1, sp_upper);
     }
 
     /// STOP.

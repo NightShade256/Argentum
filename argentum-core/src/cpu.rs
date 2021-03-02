@@ -4,6 +4,8 @@ mod decode;
 mod instructions;
 mod registers;
 
+use core::fmt::{Display, Formatter, Result};
+
 use self::registers::Registers;
 use crate::bus::Bus;
 
@@ -23,6 +25,26 @@ pub struct CPU {
 
     // The state the CPU is in.
     state: CpuState,
+}
+
+impl Display for CPU {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let reg_one = format!(
+            "A: {:02X} F: {:02X} B: {:02X} C: {:02X} D: {:02X}",
+            self.reg.a,
+            self.reg.f.bits(),
+            self.reg.b,
+            self.reg.c,
+            self.reg.d
+        );
+
+        let reg_two = format!(
+            "E: {:02X} H: {:02X} L: {:02X} SP: {:04X} PC: 00:{:04X}",
+            self.reg.e, self.reg.h, self.reg.l, self.reg.sp, self.reg.pc,
+        );
+
+        write!(f, "{} {}", reg_one, reg_two)
+    }
 }
 
 impl CPU {

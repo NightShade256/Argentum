@@ -18,11 +18,19 @@ impl Bus {
 
     /// Read a byte from the given address.
     pub fn read_byte(&self, addr: u16) -> u8 {
+        if addr == 0xFF44 {
+            return 0x90;
+        }
+
         self.memory[addr as usize]
     }
 
     /// Write a byte to the given address.
     pub fn write_byte(&mut self, addr: u16, value: u8) {
+        if addr == 0xFF44 {
+            return;
+        }
+
         self.memory[addr as usize] = value;
     }
 }
