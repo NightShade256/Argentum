@@ -366,8 +366,8 @@ impl CPU {
 
         let return_address = u16::from_le_bytes([lower, upper]);
 
-        self.reg.pc = return_address;
         self.internal_cycle(bus);
+        self.reg.pc = return_address;
     }
 
     /// RET (conditional).

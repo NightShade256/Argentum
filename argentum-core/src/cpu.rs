@@ -10,6 +10,7 @@ use self::registers::Registers;
 use crate::bus::Bus;
 
 /// Enumerates all the states the CPU can be in.
+#[derive(PartialEq)]
 pub enum CpuState {
     Halted,
     Running,
@@ -24,7 +25,7 @@ pub struct CPU {
     ime: bool,
 
     // The state the CPU is in.
-    state: CpuState,
+    pub state: CpuState,
 }
 
 impl Display for CPU {
@@ -58,7 +59,7 @@ impl CPU {
     }
 
     /// Read a byte from the current PC address.
-    pub fn imm_byte(&mut self, bus: &Bus) -> u8 {
+    pub fn imm_byte(&mut self, bus: &mut Bus) -> u8 {
         let value = bus.read_byte(self.reg.pc);
         self.reg.pc += 1;
 
@@ -67,7 +68,9 @@ impl CPU {
 
     /// TODO
     /// Tick components by one M cycle.
-    pub fn internal_cycle(&self, _bus: &mut Bus) {}
+    pub fn internal_cycle(&self, bus: &mut Bus) {
+        bus.tick();
+    }
 
     /// Read a R16 by specifiying the group and its index.
     /// See wheremyfoodat's decoding opcode PDF.
@@ -150,7 +153,7 @@ impl CPU {
 
     /// Read a R8 by specifiying its index.
     /// See wheremyfoodat's decoding opcode PDF.
-    pub fn read_r8(&mut self, bus: &Bus, r8: u8) -> u8 {
+    pub fn read_r8(&mut self, bus: &mut Bus, r8: u8) -> u8 {
         match r8 {
             0 => self.reg.b,
             1 => self.reg.c,
@@ -179,6 +182,58 @@ impl CPU {
             7 => self.reg.a = value,
 
             _ => unreachable!(),
+        }
+    }
+
+    /// Handle pending interrupts.
+    pub fn handle_interrupts(&mut self, bus: &mut Bus) {
+        let interrupts = bus.ie_flag & bus.if_flag;
+
+        // If there are pending interrupts, CPU should be
+        // back up and running.
+        if interrupts != 0 {
+            self.state = CpuState::Running;
+        }
+
+        // If IME is not enabled, we don't service the interrupt.
+        if !self.ime {
+            return;
+        }
+
+        if interrupts != 0 {
+            for i in 0..5 {
+                if (bus.ie_flag & (1 << i) != 0) && (bus.if_flag & (1 << i) != 0) {
+                    // Disable the interrupt in IF.
+                    bus.if_flag &= !(1 << i);
+
+                    // Disable IME.
+                    self.ime = false;
+
+                    // Two wait states are executed every ISR.
+                    self.internal_cycle(bus);
+                    self.internal_cycle(bus);
+
+                    // Push PC onto the stack.
+                    let [lower, upper] = self.reg.pc.to_le_bytes();
+
+                    self.reg.sp = self.reg.sp.wrapping_sub(1);
+                    bus.write_byte(self.reg.sp, upper);
+
+                    self.reg.sp = self.reg.sp.wrapping_sub(1);
+                    bus.write_byte(self.reg.sp, lower);
+
+                    // 0x40 - VBLANK
+                    // 0x48 - LCD STAT
+                    // 0x50 - Timer
+                    // 0x58 - Serial
+                    // 0x60 - Joypad
+                    self.reg.pc = 0x40 + (0x08 * i);
+                    self.internal_cycle(bus);
+
+                    // Service only one interrupt at a time.
+                    break;
+                }
+            }
         }
     }
 }

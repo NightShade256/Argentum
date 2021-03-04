@@ -4,3 +4,4 @@ extern crate alloc;
 
 pub mod bus;
 pub mod cpu;
+mod timers;

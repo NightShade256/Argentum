@@ -186,7 +186,6 @@ impl CPU {
 
             0xC3 => self.unconditional_jp(bus),
 
-            // CB prefixed.
             0xCB => {
                 let opcode = self.imm_byte(bus);
 
@@ -242,7 +241,6 @@ impl CPU {
                 self.conditional_call(bus, condition);
             }
 
-            // PUSH r16
             0xC5 | 0xD5 | 0xE5 | 0xF5 => {
                 let r16 = (opcode >> 4) & 0x3;
 
@@ -251,7 +249,6 @@ impl CPU {
 
             0xCD => self.unconditional_call(bus),
 
-            // ALU A, u8
             0xC6 | 0xD6 | 0xE6 | 0xF6 | 0xCE | 0xDE | 0xEE | 0xFE => {
                 let operation = (opcode >> 3) & 0x7;
                 let value = self.imm_byte(bus);
@@ -270,9 +267,7 @@ impl CPU {
                 }
             }
 
-            // RSTs
             0xC7 | 0xD7 | 0xE7 | 0xF7 | 0xCF | 0xDF | 0xEF | 0xFF => {
-                // Construct jump vector.
                 let vec = (opcode & 0b0011_1000) as u16;
 
                 let [lower, upper] = self.reg.pc.to_le_bytes();
