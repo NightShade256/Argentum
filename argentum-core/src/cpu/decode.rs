@@ -1,6 +1,6 @@
 //! Method to decode opcodes and dispatch the correct methods.
 
-use super::{CpuState, Cpu};
+use super::{Cpu, CpuState};
 use crate::bus::Bus;
 
 impl Cpu {
