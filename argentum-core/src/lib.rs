@@ -2,6 +2,9 @@
 
 extern crate alloc;
 
-pub mod bus;
-pub mod cpu;
+mod bus;
+mod cpu;
+mod gameboy;
 mod timers;
+
+pub use gameboy::GameBoy;

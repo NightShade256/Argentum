@@ -31,7 +31,7 @@ pub struct Cpu {
 
     /// The amount of cycles spent executing the current
     /// instruction.
-    pub cycles: u8,
+    pub cycles: u32,
 }
 
 // Formatting similar to Peach's (wheremyfoodat) logs.
@@ -250,7 +250,7 @@ impl Cpu {
 
     /// Execute the next opcode, while checking for interrupts.
     /// Return the amount of cycles it took to execute the instruction.
-    pub fn execute_next(&mut self, bus: &mut Bus) -> u8 {
+    pub fn execute_next(&mut self, bus: &mut Bus) -> u32 {
         self.cycles = 0;
 
         // Handle pending interrupts.
