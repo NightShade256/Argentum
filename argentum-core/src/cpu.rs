@@ -4,6 +4,7 @@ mod decode;
 mod instructions;
 mod registers;
 
+use alloc::format;
 use core::fmt::{Display, Formatter, Result};
 
 use self::registers::Registers;
@@ -16,19 +17,25 @@ pub enum CpuState {
     Running,
 }
 
-pub struct CPU {
-    // All the registers associated with the CPU.
+/// Implementation of the Sharp SM83 CPU.
+pub struct Cpu {
+    /// All the registers associated with the CPU.
     pub reg: Registers,
 
-    // The Interrupt Master Enable flag.
-    // Interrupts are serviced iff this flag is enabled.
-    ime: bool,
+    /// The Interrupt Master Enable flag.
+    /// Interrupts are serviced iff this flag is enabled.
+    pub ime: bool,
 
-    // The state the CPU is in.
+    /// The state the CPU is in.
     pub state: CpuState,
+
+    /// The amount of cycles spent executing the current
+    /// instruction.
+    pub cycles: u8,
 }
 
-impl Display for CPU {
+// Formatting similar to Peach's (wheremyfoodat) logs.
+impl Display for Cpu {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let reg_one = format!(
             "A: {:02X} F: {:02X} B: {:02X} C: {:02X} D: {:02X}",
@@ -48,27 +55,30 @@ impl Display for CPU {
     }
 }
 
-impl CPU {
+impl Cpu {
     /// Create a new `CPU` instance.
     pub fn new() -> Self {
         Self {
             reg: Registers::new(),
             ime: false,
             state: CpuState::Running,
+            cycles: 0,
         }
     }
 
     /// Read a byte from the current PC address.
     pub fn imm_byte(&mut self, bus: &mut Bus) -> u8 {
         let value = bus.read_byte(self.reg.pc);
-        self.reg.pc += 1;
+
+        self.cycles += 1;
+        self.reg.pc = self.reg.pc.wrapping_add(1);
 
         value
     }
 
-    /// TODO
-    /// Tick components by one M cycle.
-    pub fn internal_cycle(&self, bus: &mut Bus) {
+    /// Tick all components attached to the bus by one M cycle.
+    pub fn internal_cycle(&mut self, bus: &mut Bus) {
+        self.cycles += 1;
         bus.tick();
     }
 
@@ -185,7 +195,8 @@ impl CPU {
         }
     }
 
-    /// Handle pending interrupts.
+    /// Handle all pending interrupts.
+    /// Only one interrupt is serviced at one time.
     pub fn handle_interrupts(&mut self, bus: &mut Bus) {
         let interrupts = bus.ie_flag & bus.if_flag;
 
@@ -235,5 +246,27 @@ impl CPU {
                 }
             }
         }
+    }
+
+    /// Execute the next opcode, while checking for interrupts.
+    /// Return the amount of cycles it took to execute the instruction.
+    pub fn execute_next(&mut self, bus: &mut Bus) -> u8 {
+        self.cycles = 0;
+
+        // Handle pending interrupts.
+        self.handle_interrupts(bus);
+
+        // If the CPU is in HALT state, it just burns one M cycle.
+        if self.state == CpuState::Halted {
+            self.internal_cycle(bus);
+        } else {
+            // Fetch the opcode.
+            let opcode = self.imm_byte(bus);
+
+            // Decode and execute it.
+            self.decode_and_execute(bus, opcode);
+        }
+
+        self.cycles
     }
 }

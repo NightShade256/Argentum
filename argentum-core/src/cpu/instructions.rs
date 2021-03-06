@@ -1,7 +1,7 @@
-use super::{registers::Flags, CPU};
+use super::{registers::Flags, Cpu};
 use crate::bus::Bus;
 
-impl CPU {
+impl Cpu {
     /// Match condition according to,
     /// 0 => NZ
     /// 1 => Z
@@ -366,8 +366,8 @@ impl CPU {
 
         let return_address = u16::from_le_bytes([lower, upper]);
 
-        self.internal_cycle(bus);
         self.reg.pc = return_address;
+        self.internal_cycle(bus);
     }
 
     /// RET (conditional).
@@ -393,6 +393,9 @@ impl CPU {
 
         self.reg.sp = sp.wrapping_add(offset);
 
+        self.internal_cycle(bus);
+        self.internal_cycle(bus);
+
         self.reg.set_flag(Flags::Z, false);
         self.reg.set_flag(Flags::N, false);
         self.reg
@@ -414,6 +417,7 @@ impl CPU {
         let sp = self.reg.sp;
 
         self.reg.set_hl(sp.wrapping_add(offset));
+        self.internal_cycle(bus);
 
         self.reg.set_flag(Flags::Z, false);
         self.reg.set_flag(Flags::N, false);
@@ -448,8 +452,9 @@ impl CPU {
     }
 
     /// LD SP, HL.
-    pub fn ld_sp_hl(&mut self) {
+    pub fn ld_sp_hl(&mut self, bus: &mut Bus) {
         self.reg.sp = self.reg.get_hl();
+        self.internal_cycle(bus);
     }
 
     /// JP (unconditional).
@@ -459,8 +464,8 @@ impl CPU {
 
         let jump_address = u16::from_le_bytes([lower, upper]);
 
-        self.internal_cycle(bus);
         self.reg.pc = jump_address;
+        self.internal_cycle(bus);
     }
 
     /// JP (conditional).
@@ -471,8 +476,8 @@ impl CPU {
         let jump_address = u16::from_le_bytes([lower, upper]);
 
         if self.get_condition(condition) {
-            self.internal_cycle(bus);
             self.reg.pc = jump_address;
+            self.internal_cycle(bus);
         }
     }
 

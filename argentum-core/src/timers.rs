@@ -40,39 +40,42 @@ impl Timers {
     /// Tick the timers by 1 M cycle.
     /// 1 M-cycle = 4 T-cycles.
     pub fn tick(&mut self, if_reg: &mut u8) {
-        for _ in 0..4 {
-            // DIV is incremented every T-cycle.
-            self.div = self.div.wrapping_add(1);
+        // DIV is incremented every T-cycle.
+        self.div = self.div.wrapping_add(4);
 
-            // Select a bit of DIV depending upon the
-            // configuration of TAC.
-            let bit = match self.tac & 0x03 {
-                0 => 9,
-                1 => 3,
-                2 => 5,
-                3 => 7,
+        // Select a bit of DIV depending upon the
+        // configuration of TAC.
+        let bit = match self.tac & 0x03 {
+            0 => 9,
+            1 => 3,
+            2 => 5,
+            3 => 7,
 
-                _ => unreachable!(),
-            };
+            _ => unreachable!(),
+        };
 
-            // Compute the AND result.
-            // AND Result = Timer Enable & Selected Bit.
-            let and_result = (((self.div >> bit) & 0x01) as u8) & ((self.tac >> 2) & 0x01);
+        // Compute the AND result.
+        // AND Result = Timer Enable & Selected Bit.
+        let and_result = (((self.div >> bit) & 0x01) as u8) & ((self.tac >> 2) & 0x01);
 
-            // Detect a falling edge and increment TIMA.
-            if self.last_and_result == 1 && and_result == 0 {
-                let (result, overflow) = self.tima.overflowing_add(1);
+        // Detect a falling edge and increment TIMA.
+        if (self.last_and_result & !and_result) != 0 {
+            let (result, overflow) = self.tima.overflowing_add(1);
 
-                if overflow {
-                    self.tima = self.tma;
-                    *if_reg |= 0b0000_0100;
-                } else {
-                    self.tima = result;
-                }
+            // TODO: Implement the 1 M cycle delay between overflow
+            //       and reloading of TIMA and requesting interrupt.
+            if overflow {
+                // Reload TIMA with the value in TMA.
+                self.tima = self.tma;
+
+                // Request a timer interrupt.
+                *if_reg |= 0b0000_0100;
+            } else {
+                self.tima = result;
             }
-
-            self.last_and_result = and_result;
         }
+
+        self.last_and_result = and_result;
     }
 
     /// Read DIV, TIMA, TMA, TAC.

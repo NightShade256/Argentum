@@ -1,9 +1,10 @@
-use std::io::Write;
+//! Method to decode opcodes and dispatch the correct methods.
 
-use super::{CpuState, CPU};
+use super::{CpuState, Cpu};
 use crate::bus::Bus;
 
-impl CPU {
+impl Cpu {
+    /// Decode the provided opcode and execute it.
     pub fn decode_and_execute(&mut self, bus: &mut Bus, opcode: u8) {
         match opcode {
             0x00 => self.nop(),
@@ -146,7 +147,7 @@ impl CPU {
 
             0xE9 => self.jp_hl(),
 
-            0xF9 => self.ld_sp_hl(),
+            0xF9 => self.ld_sp_hl(bus),
 
             0xC2 | 0xD2 | 0xCA | 0xDA => {
                 let condition = (opcode >> 3) & 0x3;
@@ -288,13 +289,6 @@ impl CPU {
                 opcode,
                 self.reg.pc
             ),
-        }
-
-        if bus.read_byte(0xFF02) == 0x81 {
-            print!("{}", bus.read_byte(0xFF01) as char);
-            bus.write_byte(0xFF02, 0x00);
-
-            std::io::stdout().flush().unwrap();
         }
     }
 }
