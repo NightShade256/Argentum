@@ -68,9 +68,9 @@ impl Cpu {
 
     /// Read a byte from the current PC address.
     pub fn imm_byte(&mut self, bus: &mut Bus) -> u8 {
-        let value = bus.read_byte(self.reg.pc);
+        let value = bus.read_byte(self.reg.pc, true);
 
-        self.cycles += 1;
+        self.cycles += 4;
         self.reg.pc = self.reg.pc.wrapping_add(1);
 
         value
@@ -78,7 +78,7 @@ impl Cpu {
 
     /// Tick all components attached to the bus by one M cycle.
     pub fn internal_cycle(&mut self, bus: &mut Bus) {
-        self.cycles += 1;
+        self.cycles += 4;
         bus.tick();
     }
 
@@ -171,7 +171,7 @@ impl Cpu {
             3 => self.reg.e,
             4 => self.reg.h,
             5 => self.reg.l,
-            6 => bus.read_byte(self.reg.get_hl()),
+            6 => bus.read_byte(self.reg.get_hl(), true),
             7 => self.reg.a,
 
             _ => unreachable!(),
@@ -188,17 +188,29 @@ impl Cpu {
             3 => self.reg.e = value,
             4 => self.reg.h = value,
             5 => self.reg.l = value,
-            6 => bus.write_byte(self.reg.get_hl(), value),
+            6 => bus.write_byte(self.reg.get_hl(), value, true),
             7 => self.reg.a = value,
 
             _ => unreachable!(),
         }
     }
 
+    /// Skips the bootrom, and initializes default values for
+    /// registers.
+    pub fn skip_bootrom(&mut self) {
+        self.reg.set_af(0x01B0);
+        self.reg.set_bc(0x0013);
+        self.reg.set_de(0x00D8);
+        self.reg.set_hl(0x014D);
+
+        self.reg.sp = 0xFFFE;
+        self.reg.pc = 0x0100;
+    }
+
     /// Handle all pending interrupts.
     /// Only one interrupt is serviced at one time.
     pub fn handle_interrupts(&mut self, bus: &mut Bus) {
-        let interrupts = bus.ie_flag & bus.if_flag;
+        let interrupts = bus.ie_reg & bus.if_reg;
 
         // If there are pending interrupts, CPU should be
         // back up and running.
@@ -213,9 +225,9 @@ impl Cpu {
 
         if interrupts != 0 {
             for i in 0..5 {
-                if (bus.ie_flag & (1 << i) != 0) && (bus.if_flag & (1 << i) != 0) {
+                if (bus.ie_reg & (1 << i) != 0) && (bus.if_reg & (1 << i) != 0) {
                     // Disable the interrupt in IF.
-                    bus.if_flag &= !(1 << i);
+                    bus.if_reg &= !(1 << i);
 
                     // Disable IME.
                     self.ime = false;
@@ -228,10 +240,10 @@ impl Cpu {
                     let [lower, upper] = self.reg.pc.to_le_bytes();
 
                     self.reg.sp = self.reg.sp.wrapping_sub(1);
-                    bus.write_byte(self.reg.sp, upper);
+                    bus.write_byte(self.reg.sp, upper, true);
 
                     self.reg.sp = self.reg.sp.wrapping_sub(1);
-                    bus.write_byte(self.reg.sp, lower);
+                    bus.write_byte(self.reg.sp, lower, true);
 
                     // 0x40 - VBLANK
                     // 0x48 - LCD STAT

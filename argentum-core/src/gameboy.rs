@@ -4,7 +4,7 @@ use crate::bus::Bus;
 use crate::cpu::Cpu;
 
 /// T-cycles to execute per frame.
-const CYCLES_PER_FRAME: u32 = (4194304.0 / 59.73) as u32;
+const CYCLES_PER_FRAME: u32 = 70224;
 
 pub struct GameBoy {
     bus: Bus,
@@ -27,5 +27,15 @@ impl GameBoy {
         while cycles <= CYCLES_PER_FRAME {
             cycles += self.cpu.execute_next(&mut self.bus);
         }
+    }
+
+    /// Get a reference to the framebuffer.
+    pub fn get_framebuffer(&self) -> &[u8] {
+        self.bus.ppu.framebuffer.as_ref()
+    }
+
+    pub fn skip_bootrom(&mut self) {
+        self.cpu.skip_bootrom();
+        self.bus.skip_bootrom();
     }
 }

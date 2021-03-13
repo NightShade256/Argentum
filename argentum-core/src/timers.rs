@@ -24,6 +24,9 @@ pub struct Timers {
 
     /// Stores the last AND Result, used to detect falling edge.
     last_and_result: u8,
+
+    /// The T cycles remaining for TIMA reload to occur.
+    t_remaining: i8,
 }
 
 impl Timers {
@@ -34,15 +37,34 @@ impl Timers {
             tma: 0,
             tac: 0,
             last_and_result: 0,
+            t_remaining: -1,
         }
     }
 
     /// Tick the timers by 1 M cycle.
     /// 1 M-cycle = 4 T-cycles.
     pub fn tick(&mut self, if_reg: &mut u8) {
-        // DIV is incremented every T-cycle.
-        self.div = self.div.wrapping_add(4);
+        for _ in 0..4 {
+            if self.t_remaining > -1 {
+                self.t_remaining -= 1;
+            }
 
+            // Reload TIMA if delay period is over.
+            if self.t_remaining == 0 {
+                self.tima = self.tma;
+
+                *if_reg |= 0b0000_0100;
+            }
+
+            // DIV is incremented every T-cycle.
+            self.div = self.div.wrapping_add(1);
+
+            self.check_falling_edge();
+        }
+    }
+
+    /// Check for a falling edge and increment TIMA accordingly.
+    pub fn check_falling_edge(&mut self) {
         // Select a bit of DIV depending upon the
         // configuration of TAC.
         let bit = match self.tac & 0x03 {
@@ -62,16 +84,12 @@ impl Timers {
         if (self.last_and_result & !and_result) != 0 {
             let (result, overflow) = self.tima.overflowing_add(1);
 
-            // TODO: Implement the 1 M cycle delay between overflow
-            //       and reloading of TIMA and requesting interrupt.
-            if overflow {
-                // Reload TIMA with the value in TMA.
-                self.tima = self.tma;
+            self.tima = result;
 
-                // Request a timer interrupt.
-                *if_reg |= 0b0000_0100;
-            } else {
-                self.tima = result;
+            // If TIMA overflowed, reload it with the value from TMA after
+            // 4 T-cycles.
+            if overflow {
+                self.t_remaining = 4;
             }
         }
 
@@ -99,7 +117,10 @@ impl Timers {
 
             0xFF05 => self.tima = value,
             0xFF06 => self.tma = value,
-            0xFF07 => self.tac = value,
+            0xFF07 => {
+                self.tac = value;
+                self.check_falling_edge();
+            }
 
             _ => unreachable!(),
         }

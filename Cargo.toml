@@ -12,3 +12,12 @@ license = "Apache-2.0"
 
 [dependencies]
 argentum-core = { path = "./argentum-core" }
+structopt = "0.3.21"
+winit = "0.24.0"
+
+[profile.release]
+lto = "thin"
+
+[dependencies.pixels]
+git = "https://github.com/parasyte/pixels"
+rev = "f2d4a4f08491a307c1594d923b2e999cc7655b1d"
