@@ -148,8 +148,6 @@ pub struct Ppu {
 
     /// RGBA32 framebuffer, to be rendered by the frontend.
     pub framebuffer: Box<[u8; 160 * 144 * 4]>,
-
-    first_frame: bool,
 }
 
 impl Ppu {
@@ -197,7 +195,7 @@ impl Ppu {
 
     /// Create a new `Ppu` instance.
     pub fn new() -> Self {
-        Self {
+        let mut ppu = Self {
             vram: Box::new([0; 0x2000]),
             oam: Box::new([0; 0xA0]),
             ly: 0,
@@ -215,8 +213,16 @@ impl Ppu {
             current_mode: PpuModes::OamSearch,
             total_cycles: 0,
             framebuffer: Box::new([0; 160 * 144 * 4]),
-            first_frame: true,
+        };
+
+        // Fill in the shade 0b00 into the framebuffer.
+        let colour_bytes = COLOR_PALETTE[0].to_be_bytes();
+
+        for pixel in ppu.framebuffer.chunks_exact_mut(4) {
+            pixel.copy_from_slice(&colour_bytes);
         }
+
+        ppu
     }
 
     /// Change the PPU's current mode.
@@ -249,11 +255,6 @@ impl Ppu {
             }
 
             PpuModes::OamSearch => {
-                if self.first_frame {
-                    self.first_frame = false;
-                    self.current_mode = PpuModes::Drawing;
-                }
-
                 self.current_mode = mode;
 
                 // Request STAT interrupt if
