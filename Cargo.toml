@@ -20,4 +20,4 @@ lto = "thin"
 
 [dependencies.pixels]
 git = "https://github.com/parasyte/pixels"
-rev = "f2d4a4f08491a307c1594d923b2e999cc7655b1d"
+rev = "11c5961e4cbfe2c74e32e59471ba2be43c582afa"

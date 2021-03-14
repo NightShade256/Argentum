@@ -1113,7 +1113,7 @@ checksum = "dc0e1f259c92177c30a4c9d177246edd0a3568b25756a977d0632cf8fa37e905"
 [[package]]
 name = "pixels"
 version = "0.2.0"
-source = "git+https://github.com/parasyte/pixels?rev=f2d4a4f08491a307c1594d923b2e999cc7655b1d#f2d4a4f08491a307c1594d923b2e999cc7655b1d"
+source = "git+https://github.com/parasyte/pixels?rev=11c5961e4cbfe2c74e32e59471ba2be43c582afa#11c5961e4cbfe2c74e32e59471ba2be43c582afa"
 dependencies = [
  "pollster",
  "raw-window-handle",

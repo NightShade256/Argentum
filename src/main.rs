@@ -27,8 +27,8 @@ fn initialize_window(event_loop: &EventLoop<()>) -> Window {
     WindowBuilder::new()
         .with_decorations(true)
         .with_title("Argentum GB")
-        .with_min_inner_size(LogicalSize::new(160.0, 144.0))
-        .with_inner_size(LogicalSize::new(480.0, 432.0))
+        .with_min_inner_size(LogicalSize::new(160, 144))
+        .with_inner_size(LogicalSize::new(480, 432))
         .build(event_loop)
         .expect("Failed to create a window.")
 }
@@ -105,7 +105,7 @@ pub fn main() {
         Event::WindowEvent {
             event: WindowEvent::Resized(window_size),
             ..
-        } => pixels.resize(window_size.width, window_size.height),
+        } => pixels.resize_surface(window_size.width, window_size.height),
 
         _ => {}
     });
