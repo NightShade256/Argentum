@@ -1,9 +1,12 @@
 use alloc::boxed::Box;
 
-use crate::{ppu::Ppu, timers::Timers};
+use crate::{cartridge::*, ppu::Ppu, timers::Timers};
 
 /// Implementation of the Game Boy memory bus.
 pub struct Bus {
+    // The inserted cartridge.
+    pub cartridge: Box<dyn Cartridge>,
+
     /// The Game Boy timer apparatus.
     /// DIV, TIMA and co.
     pub timers: Timers,
@@ -24,25 +27,35 @@ pub struct Bus {
 impl Bus {
     /// Create a new `Bus` instance.
     pub fn new(rom: &[u8]) -> Self {
-        let mut bus = Self {
+        let cartridge: Box<dyn Cartridge> = match rom[0x0147] {
+            0x00 => Box::new(RomOnly::new(rom)),
+            0x01..=0x03 => Box::new(Mbc1::new(rom)),
+
+            _ => panic!("ROM ONLY + MBC1 cartridges are all that is currently supported."),
+        };
+
+        Self {
+            cartridge,
             timers: Timers::new(),
             ppu: Ppu::new(),
             memory: Box::new([0; 0x10000]),
             ie_reg: 0,
             if_reg: 0,
-        };
-
-        bus.memory[0x0000..0x8000].copy_from_slice(rom);
-
-        bus
+        }
     }
 
     /// Read a byte from the given address.
     /// Tick the components if specified.
     pub fn read_byte(&mut self, addr: u16, tick: bool) -> u8 {
         let value = match addr {
+            // ROM Banks.
+            0x0000..=0x7FFF => self.cartridge.read_byte(addr),
+
             // Video RAM, rerouted to PPU.
             0x8000..=0x9FFF => self.ppu.read_byte(addr),
+
+            // External RAM
+            0xA000..=0xBFFF => self.cartridge.read_byte(addr),
 
             // P1 - JOYP register.
             0xFF00 => 0xFF,
@@ -76,8 +89,14 @@ impl Bus {
     /// Tick the components if specified.
     pub fn write_byte(&mut self, addr: u16, value: u8, tick: bool) {
         match addr {
+            // ROM Banks.
+            0x0000..=0x7FFF => self.cartridge.write_byte(addr, value),
+
             // Video RAM, rerouted to PPU.
             0x8000..=0x9FFF => self.ppu.write_byte(addr, value),
+
+            // External RAM
+            0xA000..=0xBFFF => self.cartridge.write_byte(addr, value),
 
             // P1 - JOYP register.
             0xFF00 => {}

@@ -3,6 +3,7 @@
 extern crate alloc;
 
 mod bus;
+mod cartridge;
 mod cpu;
 mod gameboy;
 mod ppu;
