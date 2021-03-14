@@ -105,7 +105,9 @@ pub fn main() {
         Event::WindowEvent {
             event: WindowEvent::Resized(window_size),
             ..
-        } => pixels.resize_surface(window_size.width, window_size.height),
+        } if window_size.width != 0 && window_size.height != 0 => {
+            pixels.resize_surface(window_size.width, window_size.height)
+        }
 
         _ => {}
     });
