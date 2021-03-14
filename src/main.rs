@@ -1,12 +1,12 @@
 use std::time::{Duration, Instant};
 use std::{env, path::PathBuf};
 
-use argentum_core::GameBoy;
+use argentum_core::{GameBoy, GbKey};
 use pixels::{Pixels, SurfaceTexture};
 use structopt::StructOpt;
 use winit::{
     dpi::LogicalSize,
-    event::{Event, WindowEvent},
+    event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
@@ -42,6 +42,36 @@ fn initialize_pixels(window: &Window) -> Pixels {
 
     // Create pixels instance and return it.
     Pixels::new(160, 144, surface_texture).expect("Failed to initialize Pixels framebuffer.")
+}
+
+/// Handle the keyboard input.
+fn handle_input(gb: &mut GameBoy, input: &KeyboardInput) {
+    if let KeyboardInput {
+        virtual_keycode: Some(keycode),
+        state,
+        ..
+    } = input
+    {
+        let key = match keycode {
+            VirtualKeyCode::W => Some(GbKey::UP),
+            VirtualKeyCode::A => Some(GbKey::LEFT),
+            VirtualKeyCode::S => Some(GbKey::DOWN),
+            VirtualKeyCode::D => Some(GbKey::RIGHT),
+            VirtualKeyCode::Return => Some(GbKey::START),
+            VirtualKeyCode::Space => Some(GbKey::SELECT),
+            VirtualKeyCode::Z => Some(GbKey::BUTTON_A),
+            VirtualKeyCode::X => Some(GbKey::BUTTON_B),
+            _ => None,
+        };
+
+        if let Some(key) = key {
+            if *state == ElementState::Pressed {
+                gb.key_down(key);
+            } else {
+                gb.key_up(key);
+            }
+        }
+    }
 }
 
 /// Start running the emulator.
@@ -108,6 +138,11 @@ pub fn main() {
         } if window_size.width != 0 && window_size.height != 0 => {
             pixels.resize_surface(window_size.width, window_size.height)
         }
+
+        Event::WindowEvent {
+            event: WindowEvent::KeyboardInput { input, .. },
+            ..
+        } => handle_input(&mut argentum, &input),
 
         _ => {}
     });

@@ -2,6 +2,7 @@
 
 use crate::bus::Bus;
 use crate::cpu::Cpu;
+use crate::joypad::GbKey;
 
 /// T-cycles to execute per frame.
 const CYCLES_PER_FRAME: u32 = 70224;
@@ -37,5 +38,15 @@ impl GameBoy {
     pub fn skip_bootrom(&mut self) {
         self.cpu.skip_bootrom();
         self.bus.skip_bootrom();
+    }
+
+    /// Redirects to joypad interface.
+    pub fn key_down(&mut self, key: GbKey) {
+        self.bus.joypad.key_down(key);
+    }
+
+    /// Redirects to joypad interface.
+    pub fn key_up(&mut self, key: GbKey) {
+        self.bus.joypad.key_up(key);
     }
 }

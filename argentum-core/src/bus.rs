@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
 
-use crate::{cartridge::*, ppu::Ppu, timers::Timers};
+use crate::{cartridge::*, joypad::Joypad, ppu::Ppu, timers::Timers};
 
 /// Implementation of the Game Boy memory bus.
 pub struct Bus {
@@ -14,6 +14,9 @@ pub struct Bus {
     /// The Game Boy PPU.
     /// Contains VRAM, OAM RAM and drawing logic.
     pub ppu: Ppu,
+
+    /// The Game Boy joypad subsystem.
+    pub joypad: Joypad,
 
     /// $FF0F - IF register. (Set bits here to request interrupts).
     pub if_reg: u8,
@@ -38,9 +41,10 @@ impl Bus {
             cartridge,
             timers: Timers::new(),
             ppu: Ppu::new(),
-            memory: Box::new([0; 0x10000]),
+            joypad: Joypad::new(),
             ie_reg: 0,
             if_reg: 0,
+            memory: Box::new([0; 0x10000]),
         }
     }
 
@@ -58,7 +62,7 @@ impl Bus {
             0xA000..=0xBFFF => self.cartridge.read_byte(addr),
 
             // P1 - JOYP register.
-            0xFF00 => 0xFF,
+            0xFF00 => self.joypad.read_byte(addr),
 
             // DIV, TIMA and co.
             0xFF04..=0xFF07 => self.timers.read_byte(addr),
@@ -99,7 +103,7 @@ impl Bus {
             0xA000..=0xBFFF => self.cartridge.write_byte(addr, value),
 
             // P1 - JOYP register.
-            0xFF00 => {}
+            0xFF00 => self.joypad.write_byte(addr, value),
 
             // DIV, TIMA and co.
             0xFF04..=0xFF07 => self.timers.write_byte(addr, value),
@@ -146,6 +150,7 @@ impl Bus {
     /// Tick the components on the Bus.
     pub fn tick(&mut self) {
         self.timers.tick(&mut self.if_reg);
+        self.joypad.tick(&mut self.if_reg);
         self.ppu.tick(&mut self.if_reg);
     }
 }
