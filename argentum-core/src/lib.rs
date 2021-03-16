@@ -1,8 +1,9 @@
-#![allow(clippy::new_without_default)]
+#![no_std]
+
+extern crate alloc;
 
 mod bus;
 mod cartridge;
-mod common;
 mod cpu;
 mod gameboy;
 mod joypad;

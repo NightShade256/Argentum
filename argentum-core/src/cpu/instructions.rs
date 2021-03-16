@@ -1,6 +1,5 @@
-//! Contains implementations of opcodes.
-
-use super::*;
+use super::{registers::Flags, Cpu};
+use crate::bus::Bus;
 
 impl Cpu {
     /// Match condition according to,
@@ -10,494 +9,662 @@ impl Cpu {
     /// 3 => C
     fn get_condition(&self, condition: u8) -> bool {
         match condition {
-            0 => !self.r.get_zf(),
-            1 => self.r.get_zf(),
-            2 => !self.r.get_cf(),
-            3 => self.r.get_cf(),
+            0 => !self.reg.get_flag(Flags::Z),
+            1 => self.reg.get_flag(Flags::Z),
+            2 => !self.reg.get_flag(Flags::C),
+            3 => self.reg.get_flag(Flags::C),
 
             _ => unreachable!(),
         }
     }
 
-    /// Do nothing. No OPeration.
+    /// NOP.
     pub fn nop(&self) {}
 
-    /// LD (u16), SP
+    /// LD (u16), SP.
     pub fn ld_u16_sp(&mut self, bus: &mut Bus) {
-        // Read u16 immediate value.
-        let addr = self.imm_word(bus);
+        let lower = self.imm_byte(bus);
+        let upper = self.imm_byte(bus);
 
-        // Write to the address u16, the value of SP.
-        bus.write_word(addr, self.r.sp);
+        let address = u16::from_le_bytes([lower, upper]);
+
+        let [sp_lower, sp_upper] = self.reg.sp.to_le_bytes();
+
+        bus.write_byte(address, sp_lower, true);
+        bus.write_byte(address + 1, sp_upper, true);
     }
 
-    /// STOP
-    /// Its length is 2 bytes for some reason.
-    pub fn stop(&mut self, bus: &mut Bus) {
-        // Read 1 byte, as STOP is 2 bytes long.
-        self.imm_byte(bus);
+    /// STOP.
+    pub fn stop(&mut self) {
+        self.reg.pc += 1;
     }
 
-    /// Push a value onto the stack.
-    pub fn push(&mut self, bus: &mut Bus, value: u16) {
-        // Stack grows downwards, and each element
-        // is one word long.
-        self.r.sp -= 2;
-
-        // Write the value to the stack.
-        bus.write_word(self.r.sp, value);
-    }
-
-    /// Pop a value off the stack.
-    pub fn pop(&mut self, bus: &mut Bus) -> u16 {
-        // Pop the value off, by increasing SP by 2.
-        // This will cause the previous value to be
-        // overwrited.
-        let value = bus.read_word(self.r.sp);
-        self.r.sp += 2;
-
-        value
-    }
-
-    /// Unconditional jump to the given address.
-    pub fn jp(&mut self, addr: u16) {
-        self.r.pc = addr;
-    }
-
-    /// Conditional jump to given address.
-    pub fn conditional_jp(&mut self, addr: u16, condition: u8) {
-        let is_satisfied = self.get_condition(condition);
-
-        if is_satisfied {
-            self.jp(addr);
-            self.cycles += 4;
-        }
-    }
-
-    /// Unconditional return from a subroutine.
-    pub fn ret(&mut self, bus: &mut Bus) {
-        self.r.pc = self.pop(bus);
-    }
-
-    /// Conditional return from a subroutine.
-    pub fn conditional_ret(&mut self, bus: &mut Bus, condition: u8) {
-        let is_satisfied = self.get_condition(condition);
-
-        if is_satisfied {
-            self.ret(bus);
-            self.cycles += 12;
-        }
-    }
-
-    /// Unconditional call to a subroutine.
-    pub fn call(&mut self, bus: &mut Bus) {
-        let addr = self.imm_word(bus);
-
-        // Push the current PC to stack.
-        self.push(bus, self.r.pc);
-
-        // Jump to the address.
-        self.r.pc = addr;
-    }
-
-    /// Conditional call to a subroutine.
-    pub fn conditional_call(&mut self, bus: &mut Bus, condition: u8) {
-        let addr = self.imm_word(bus);
-        let is_satisfied = self.get_condition(condition);
-
-        if is_satisfied {
-            self.push(bus, self.r.pc);
-            self.r.pc = addr;
-            self.cycles += 12;
-        }
-    }
-
-    /// Unconditional relative jump.
-    pub fn jr(&mut self, bus: &mut Bus) {
-        // Convert the offset to a signed value.
+    /// JR (unconditional).
+    pub fn unconditional_jr(&mut self, bus: &mut Bus) {
         let offset = self.imm_byte(bus) as i8 as i16;
 
-        // Add a signed value to PC.
-        self.r.pc = (self.r.pc as i16 + offset) as u16;
+        self.reg.pc = (self.reg.pc as i16 + offset) as u16;
+        self.internal_cycle(bus);
     }
 
-    /// Conditional relative jump.
+    /// JR (conditional).
     pub fn conditional_jr(&mut self, bus: &mut Bus, condition: u8) {
         let offset = self.imm_byte(bus) as i8 as i16;
-        let is_satisfied = self.get_condition(condition);
 
-        if is_satisfied {
-            self.r.pc = (self.r.pc as i16 + offset) as u16;
-            self.cycles += 4;
+        if self.get_condition(condition) {
+            self.reg.pc = (self.reg.pc as i16 + offset) as u16;
+            self.internal_cycle(bus);
         }
     }
 
-    /// ADD HL, r16
-    pub fn add_hl_r16(&mut self, r16: Reg16) {
-        let hl = self.r.read_r16(Reg16::HL);
-        let rr = self.r.read_r16(r16);
+    /// LD R16, u16.
+    pub fn ld_r16_u16(&mut self, bus: &mut Bus, r16: u8) {
+        let lower = self.imm_byte(bus);
+        let upper = self.imm_byte(bus);
 
-        self.r.write_r16(Reg16::HL, hl.wrapping_add(rr));
-
-        self.r.set_nf(false);
-        self.r.set_hf((hl & 0xFFF) + (rr & 0xFFF) > 0xFFF);
-        self.r.set_cf((hl as u32) + (rr as u32) > 0xFFFF);
+        self.write_r16::<1>(r16, u16::from_le_bytes([lower, upper]));
     }
 
-    /// INC r8
-    pub fn inc_r8(&mut self, bus: &mut Bus, r8: Reg8) {
-        let r8v = self.r.read_r8(r8, bus);
-        let result = r8v.wrapping_add(1);
+    /// ADD HL, R16.
+    pub fn add_hl_r16(&mut self, bus: &mut Bus, r16: u8) {
+        let hl = self.reg.get_hl();
+        let value = self.read_r16::<1>(r16);
 
-        self.r.write_r8(r8, bus, result);
+        self.reg.set_hl(hl.wrapping_add(value));
+        self.internal_cycle(bus);
 
-        self.r.set_zf(result == 0);
-        self.r.set_nf(false);
-        self.r.set_hf((r8v & 0xF) + 0x1 > 0xF);
+        self.reg.set_flag(Flags::N, false);
+        self.reg
+            .set_flag(Flags::H, (hl & 0xFFF) + (value & 0xFFF) > 0xFFF);
+        self.reg
+            .set_flag(Flags::C, (hl as u32) + (value as u32) > 0xFFFF);
     }
 
-    /// DEC r8
-    pub fn dec_r8(&mut self, bus: &mut Bus, r8: Reg8) {
-        let r8v = self.r.read_r8(r8, bus);
-        let result = r8v.wrapping_sub(1);
+    /// LD (R16), A.
+    pub fn ld_r16_a(&mut self, bus: &mut Bus, r16: u8) {
+        let addr = self.read_r16::<2>(r16);
 
-        self.r.write_r8(r8, bus, result);
-
-        self.r.set_zf(result == 0);
-        self.r.set_nf(true);
-        self.r.set_hf(r8v.trailing_zeros() >= 4);
+        bus.write_byte(addr, self.reg.a, true);
     }
 
-    /// ADD A, r8
-    pub fn add_r8(&mut self, r8v: u8) {
-        let a = self.r.a;
-        let result = a.wrapping_add(r8v);
+    /// LD A, (R16).
+    pub fn ld_a_r16(&mut self, bus: &mut Bus, r16: u8) {
+        let addr = self.read_r16::<2>(r16);
 
-        self.r.a = result;
-
-        self.r.set_zf(result == 0);
-        self.r.set_nf(false);
-        self.r.set_hf((a & 0xF) + (r8v & 0xF) > 0xF);
-        self.r.set_cf((a as u16 + r8v as u16) > 0xFF);
+        self.reg.a = bus.read_byte(addr, true);
     }
 
-    /// ADC A, r8
-    pub fn adc_r8(&mut self, r8v: u8) {
-        let a = self.r.a;
-        let f = self.r.get_cf() as u8;
-        let result = a.wrapping_add(r8v).wrapping_add(f);
+    /// INC R16.
+    pub fn inc_r16(&mut self, bus: &mut Bus, r16: u8) {
+        let value = self.read_r16::<1>(r16);
 
-        self.r.a = result;
-
-        self.r.set_zf(result == 0);
-        self.r.set_nf(false);
-        self.r.set_hf((a & 0xF) + (r8v & 0xF) + f > 0xF);
-        self.r.set_cf((a as u16) + (r8v as u16) + (f as u16) > 0xFF);
+        self.write_r16::<1>(r16, value.wrapping_add(1));
+        self.internal_cycle(bus);
     }
 
-    /// SUB A, r8
-    pub fn sub_r8(&mut self, r8v: u8) {
-        let a = self.r.a;
-        let result = self.r.a.wrapping_sub(r8v);
+    /// DEC R16.
+    pub fn dec_r16(&mut self, bus: &mut Bus, r16: u8) {
+        let value = self.read_r16::<1>(r16);
 
-        self.r.a = result;
-
-        self.r.set_zf(result == 0);
-        self.r.set_nf(true);
-        self.r.set_hf((a & 0xF) < (r8v & 0xF));
-        self.r.set_cf((a as u16) < (r8v as u16));
+        self.write_r16::<1>(r16, value.wrapping_sub(1));
+        self.internal_cycle(bus);
     }
 
-    /// SBC A, r8
-    pub fn sbc_r8(&mut self, r8v: u8) {
-        let a = self.r.a;
-        let f = self.r.get_cf() as u8;
-        let result = a.wrapping_sub(r8v).wrapping_sub(f);
+    /// INC R8.
+    pub fn inc_r8(&mut self, bus: &mut Bus, r8: u8) {
+        let value = self.read_r8(bus, r8);
+        let result = value.wrapping_add(1);
 
-        self.r.a = result;
+        self.write_r8(bus, r8, result);
 
-        self.r.set_zf(result == 0);
-        self.r.set_nf(true);
-        self.r.set_hf((a & 0xF) < ((r8v & 0xF) + (f & 0xF)));
-        self.r.set_cf((a as u16) < (r8v as u16 + f as u16));
+        self.reg.set_flag(Flags::Z, result == 0);
+        self.reg.set_flag(Flags::N, false);
+        self.reg.set_flag(Flags::H, (value & 0xF) + 0x1 > 0xF);
     }
 
-    /// AND A, r8
-    pub fn and_r8(&mut self, r8v: u8) {
-        self.r.a &= r8v;
+    /// DEC R8.
+    pub fn dec_r8(&mut self, bus: &mut Bus, r8: u8) {
+        let value = self.read_r8(bus, r8);
+        let result = value.wrapping_sub(1);
 
-        self.r.set_zf(self.r.a == 0);
-        self.r.set_nf(false);
-        self.r.set_hf(true);
-        self.r.set_cf(false);
+        self.write_r8(bus, r8, result);
+
+        self.reg.set_flag(Flags::Z, result == 0);
+        self.reg.set_flag(Flags::N, true);
+        self.reg.set_flag(Flags::H, value.trailing_zeros() >= 4);
     }
 
-    /// XOR A, r8
-    pub fn xor_r8(&mut self, r8v: u8) {
-        self.r.a ^= r8v;
+    /// LD R8, u8.
+    pub fn ld_r8_u8(&mut self, bus: &mut Bus, r8: u8) {
+        let value = self.imm_byte(bus);
 
-        self.r.set_zf(self.r.a == 0);
-        self.r.set_nf(false);
-        self.r.set_hf(false);
-        self.r.set_cf(false);
+        self.write_r8(bus, r8, value);
     }
 
-    /// OR A, r8
-    pub fn or_r8(&mut self, r8v: u8) {
-        self.r.a |= r8v;
-
-        self.r.set_zf(self.r.a == 0);
-        self.r.set_nf(false);
-        self.r.set_hf(false);
-        self.r.set_cf(false);
-    }
-
-    /// CP A, r8
-    pub fn cp_r8(&mut self, r8v: u8) {
-        let result = self.r.a.wrapping_sub(r8v);
-
-        self.r.set_zf(result == 0);
-        self.r.set_nf(true);
-        self.r.set_hf((self.r.a & 0xF) < (r8v & 0xF));
-        self.r.set_cf((self.r.a as u16) < (r8v as u16));
-    }
-
-    // RLC r8
-    pub fn rlc_r8(&mut self, bus: &mut Bus, r8: Reg8) {
-        let r8v = self.r.read_r8(r8, bus);
-        let result = r8v.rotate_left(1);
-
-        self.r.write_r8(r8, bus, result);
-
-        self.r.set_zf(result == 0);
-        self.r.set_nf(false);
-        self.r.set_hf(false);
-        self.r.set_cf((r8v & 0x80) != 0);
-    }
-
-    // RRC r8
-    pub fn rrc_r8(&mut self, bus: &mut Bus, r8: Reg8) {
-        let r8v = self.r.read_r8(r8, bus);
-        let result = r8v.rotate_right(1);
-
-        self.r.write_r8(r8, bus, result);
-
-        self.r.set_zf(result == 0);
-        self.r.set_nf(false);
-        self.r.set_hf(false);
-        self.r.set_cf((r8v & 0x01) != 0);
-    }
-
-    // RL r8
-    pub fn rl_r8(&mut self, bus: &mut Bus, r8: Reg8) {
-        let r8v = self.r.read_r8(r8, bus);
-        let carry = self.r.get_cf() as u8;
-        let result = (r8v << 1) | carry;
-
-        self.r.write_r8(r8, bus, result);
-
-        self.r.set_zf(result == 0);
-        self.r.set_nf(false);
-        self.r.set_hf(false);
-        self.r.set_cf((r8v & 0x80) != 0);
-    }
-
-    // RR r8
-    pub fn rr_r8(&mut self, bus: &mut Bus, r8: Reg8) {
-        let r8v = self.r.read_r8(r8, bus);
-        let carry = self.r.get_cf() as u8;
-        let result = (r8v >> 1) | (carry << 7);
-
-        self.r.write_r8(r8, bus, result);
-
-        self.r.set_zf(result == 0);
-        self.r.set_nf(false);
-        self.r.set_hf(false);
-        self.r.set_cf((r8v & 0x01) != 0);
-    }
-
-    // SLA r8
-    pub fn sla_r8(&mut self, bus: &mut Bus, r8: Reg8) {
-        let r8v = self.r.read_r8(r8, bus);
-        let result = r8v << 1;
-
-        self.r.write_r8(r8, bus, result);
-
-        self.r.set_zf(result == 0);
-        self.r.set_nf(false);
-        self.r.set_hf(false);
-        self.r.set_cf((r8v & 0x80) != 0);
-    }
-
-    // SRA r8
-    pub fn sra_r8(&mut self, bus: &mut Bus, r8: Reg8) {
-        let r8v = self.r.read_r8(r8, bus);
-        let result = (r8v >> 1) | (r8v & 0x80);
-
-        self.r.write_r8(r8, bus, result);
-
-        self.r.set_zf(result == 0);
-        self.r.set_nf(false);
-        self.r.set_hf(false);
-        self.r.set_cf((r8v & 0x01) != 0);
-    }
-
-    // SWAP r8
-    pub fn swap_r8(&mut self, bus: &mut Bus, r8: Reg8) {
-        let r8v = self.r.read_r8(r8, bus);
-        let result = (r8v << 4) | (r8v >> 4);
-
-        self.r.write_r8(r8, bus, result);
-
-        self.r.set_zf(result == 0);
-        self.r.set_nf(false);
-        self.r.set_hf(false);
-        self.r.set_cf(false);
-    }
-
-    // SRL r8
-    pub fn srl_r8(&mut self, bus: &mut Bus, r8: Reg8) {
-        let r8v = self.r.read_r8(r8, bus);
-        let result = r8v >> 1;
-
-        self.r.write_r8(r8, bus, result);
-
-        self.r.set_zf(result == 0);
-        self.r.set_nf(false);
-        self.r.set_hf(false);
-        self.r.set_cf((r8v & 0x01) != 0);
-    }
-
-    // BIT bit, r8
-    pub fn bit_r8(&mut self, bus: &mut Bus, r8: Reg8, bit: u8) {
-        let r8v = self.r.read_r8(r8, bus) & (1 << bit);
-
-        self.r.set_zf(r8v == 0);
-        self.r.set_nf(false);
-        self.r.set_hf(true);
-    }
-
-    // RES bit, r8
-    pub fn res_r8(&mut self, bus: &mut Bus, r8: Reg8, bit: u8) {
-        let r8v = self.r.read_r8(r8, bus);
-        let mask = !(1 << bit);
-        let result = r8v & mask;
-
-        self.r.write_r8(r8, bus, result);
-    }
-
-    // SET bit, r8
-    pub fn set_r8(&mut self, bus: &mut Bus, r8: Reg8, bit: u8) {
-        let r8v = self.r.read_r8(r8, bus) | (1 << bit);
-        self.r.write_r8(r8, bus, r8v);
-    }
-
-    /// RLCA
+    /// RLCA.
     pub fn rlca(&mut self) {
-        let r8v = self.r.a;
-        let result = r8v.rotate_left(1);
+        let value = self.reg.a;
+        let result = value.rotate_left(1);
 
-        self.r.a = result;
+        self.reg.a = result;
 
-        self.r.set_zf(false);
-        self.r.set_nf(false);
-        self.r.set_hf(false);
-        self.r.set_cf((r8v & 0x80) != 0);
+        self.reg.set_flag(Flags::Z, false);
+        self.reg.set_flag(Flags::N, false);
+        self.reg.set_flag(Flags::H, false);
+        self.reg.set_flag(Flags::C, (value & 0x80) != 0);
     }
 
-    /// RLCA
+    /// RRCA.
     pub fn rrca(&mut self) {
-        let r8v = self.r.a;
-        let result = r8v.rotate_right(1);
+        let value = self.reg.a;
+        let result = value.rotate_right(1);
 
-        self.r.a = result;
+        self.reg.a = result;
 
-        self.r.set_zf(false);
-        self.r.set_nf(false);
-        self.r.set_hf(false);
-        self.r.set_cf((r8v & 0x01) != 0);
+        self.reg.set_flag(Flags::Z, false);
+        self.reg.set_flag(Flags::N, false);
+        self.reg.set_flag(Flags::H, false);
+        self.reg.set_flag(Flags::C, (value & 0x01) != 0);
     }
 
-    /// RLA
+    /// RLA.
     pub fn rla(&mut self) {
-        let r8v = self.r.a;
-        let carry = self.r.get_cf() as u8;
-        let result = (r8v << 1) | carry;
+        let value = self.reg.a;
+        let carry = self.reg.get_flag(Flags::C) as u8;
+        let result = (value << 1) | carry;
 
-        self.r.a = result;
+        self.reg.a = result;
 
-        self.r.set_zf(false);
-        self.r.set_nf(false);
-        self.r.set_hf(false);
-        self.r.set_cf((r8v & 0x80) != 0);
+        self.reg.set_flag(Flags::Z, false);
+        self.reg.set_flag(Flags::N, false);
+        self.reg.set_flag(Flags::H, false);
+        self.reg.set_flag(Flags::C, (value & 0x80) != 0);
     }
 
-    /// RRA
+    /// RRA.
     pub fn rra(&mut self) {
-        let r8v = self.r.a;
-        let carry = self.r.get_cf() as u8;
-        let result = (r8v >> 1) | (carry << 7);
+        let value = self.reg.a;
+        let carry = self.reg.get_flag(Flags::C) as u8;
+        let result = (value >> 1) | (carry << 7);
 
-        self.r.a = result;
+        self.reg.a = result;
 
-        self.r.set_zf(false);
-        self.r.set_nf(false);
-        self.r.set_hf(false);
-        self.r.set_cf((r8v & 0x01) != 0);
+        self.reg.set_flag(Flags::Z, false);
+        self.reg.set_flag(Flags::N, false);
+        self.reg.set_flag(Flags::H, false);
+        self.reg.set_flag(Flags::C, (value & 0x01) != 0);
     }
 
-    /// DAA
-    /// Probably the most involved instruction of them
-    /// all.
+    /// DA A.
     pub fn daa(&mut self) {
-        let mut a = self.r.a;
+        let mut a = self.reg.a;
 
-        if self.r.get_nf() {
-            if self.r.get_cf() {
+        if self.reg.get_flag(Flags::N) {
+            if self.reg.get_flag(Flags::C) {
                 a = a.wrapping_add(0xA0);
-                self.r.set_cf(true);
+                self.reg.set_flag(Flags::C, true);
             }
 
-            if self.r.get_hf() {
+            if self.reg.get_flag(Flags::H) {
                 a = a.wrapping_add(0xFA);
             }
         } else {
-            if self.r.get_cf() || (a > 0x99) {
+            if self.reg.get_flag(Flags::C) || (a > 0x99) {
                 a = a.wrapping_add(0x60);
-                self.r.set_cf(true);
+                self.reg.set_flag(Flags::C, true);
             }
 
-            if self.r.get_hf() || ((a & 0xF) > 0x9) {
+            if self.reg.get_flag(Flags::H) || ((a & 0xF) > 0x9) {
                 a = a.wrapping_add(0x06);
             }
         }
 
-        self.r.a = a;
-        self.r.set_zf(self.r.a == 0);
-        self.r.set_hf(false);
+        self.reg.a = a;
+        self.reg.set_flag(Flags::Z, a == 0);
+        self.reg.set_flag(Flags::H, false);
     }
 
-    /// CPL
+    /// CPL.
     pub fn cpl(&mut self) {
-        self.r.a = !self.r.a;
+        self.reg.a = !self.reg.a;
 
-        self.r.set_nf(true);
-        self.r.set_hf(true);
+        self.reg.set_flag(Flags::N, true);
+        self.reg.set_flag(Flags::H, true);
     }
 
-    /// SCF
+    /// SCF.
     pub fn scf(&mut self) {
-        self.r.set_nf(false);
-        self.r.set_hf(false);
-        self.r.set_cf(true);
+        self.reg.set_flag(Flags::N, false);
+        self.reg.set_flag(Flags::H, false);
+        self.reg.set_flag(Flags::C, true);
     }
 
-    /// CCF
+    /// CCF.
     pub fn ccf(&mut self) {
-        let carry = self.r.get_cf();
+        let carry = self.reg.get_flag(Flags::C);
 
-        self.r.set_nf(false);
-        self.r.set_hf(false);
-        self.r.set_cf(!carry);
+        self.reg.set_flag(Flags::N, false);
+        self.reg.set_flag(Flags::H, false);
+        self.reg.set_flag(Flags::C, !carry);
+    }
+
+    /// LD R8, R8.
+    pub fn ld_r8_r8(&mut self, bus: &mut Bus, src: u8, dst: u8) {
+        let value = self.read_r8(bus, src);
+
+        self.write_r8(bus, dst, value);
+    }
+
+    /// ADD A, R8.
+    pub fn add_r8(&mut self, value: u8) {
+        let a = self.reg.a;
+        let result = a.wrapping_add(value);
+
+        self.reg.a = result;
+
+        self.reg.set_flag(Flags::Z, result == 0);
+        self.reg.set_flag(Flags::N, false);
+        self.reg.set_flag(Flags::H, (a & 0xF) + (value & 0xF) > 0xF);
+        self.reg
+            .set_flag(Flags::C, (a as u16 + value as u16) > 0xFF);
+    }
+
+    /// ADC A, R8.
+    pub fn adc_r8(&mut self, value: u8) {
+        let a = self.reg.a;
+        let f = self.reg.get_flag(Flags::C) as u8;
+        let result = a.wrapping_add(value).wrapping_add(f);
+
+        self.reg.a = result;
+
+        self.reg.set_flag(Flags::Z, result == 0);
+        self.reg.set_flag(Flags::N, false);
+        self.reg
+            .set_flag(Flags::H, (a & 0xF) + (value & 0xF) + f > 0xF);
+        self.reg
+            .set_flag(Flags::C, (a as u16) + (value as u16) + (f as u16) > 0xFF);
+    }
+
+    /// SUB A, R8.
+    pub fn sub_r8(&mut self, value: u8) {
+        let a = self.reg.a;
+        let result = self.reg.a.wrapping_sub(value);
+
+        self.reg.a = result;
+
+        self.reg.set_flag(Flags::Z, result == 0);
+        self.reg.set_flag(Flags::N, true);
+        self.reg.set_flag(Flags::H, (a & 0xF) < (value & 0xF));
+        self.reg.set_flag(Flags::C, (a as u16) < (value as u16));
+    }
+
+    /// SBC A, R8.
+    pub fn sbc_r8(&mut self, value: u8) {
+        let a = self.reg.a;
+        let f = self.reg.get_flag(Flags::C) as u8;
+        let result = a.wrapping_sub(value).wrapping_sub(f);
+
+        self.reg.a = result;
+
+        self.reg.set_flag(Flags::Z, result == 0);
+        self.reg.set_flag(Flags::N, true);
+        self.reg
+            .set_flag(Flags::H, (a & 0xF) < ((value & 0xF) + (f & 0xF)));
+        self.reg
+            .set_flag(Flags::C, (a as u16) < (value as u16 + f as u16));
+    }
+
+    /// AND A, R8.
+    pub fn and_r8(&mut self, value: u8) {
+        self.reg.a &= value;
+
+        self.reg.set_flag(Flags::Z, self.reg.a == 0);
+        self.reg.set_flag(Flags::N, false);
+        self.reg.set_flag(Flags::H, true);
+        self.reg.set_flag(Flags::C, false);
+    }
+
+    /// XOR A, R8.
+    pub fn xor_r8(&mut self, value: u8) {
+        self.reg.a ^= value;
+
+        self.reg.set_flag(Flags::Z, self.reg.a == 0);
+        self.reg.set_flag(Flags::N, false);
+        self.reg.set_flag(Flags::H, false);
+        self.reg.set_flag(Flags::C, false);
+    }
+
+    /// OR A, R8.
+    pub fn or_r8(&mut self, value: u8) {
+        self.reg.a |= value;
+
+        self.reg.set_flag(Flags::Z, self.reg.a == 0);
+        self.reg.set_flag(Flags::N, false);
+        self.reg.set_flag(Flags::H, false);
+        self.reg.set_flag(Flags::C, false);
+    }
+
+    /// CP A, R8.
+    pub fn cp_r8(&mut self, value: u8) {
+        let result = self.reg.a.wrapping_sub(value);
+
+        self.reg.set_flag(Flags::Z, result == 0);
+        self.reg.set_flag(Flags::N, true);
+        self.reg
+            .set_flag(Flags::H, (self.reg.a & 0xF) < (value & 0xF));
+        self.reg
+            .set_flag(Flags::C, (self.reg.a as u16) < (value as u16));
+    }
+
+    /// RET (unconditional).
+    pub fn unconditional_ret(&mut self, bus: &mut Bus) {
+        let lower = bus.read_byte(self.reg.sp, true);
+        self.reg.sp += 1;
+
+        let upper = bus.read_byte(self.reg.sp, true);
+        self.reg.sp += 1;
+
+        let return_address = u16::from_le_bytes([lower, upper]);
+
+        self.reg.pc = return_address;
+        self.internal_cycle(bus);
+    }
+
+    /// RET (conditional).
+    pub fn conditional_ret(&mut self, bus: &mut Bus, condition: u8) {
+        self.internal_cycle(bus);
+
+        if self.get_condition(condition) {
+            self.unconditional_ret(bus);
+        }
+    }
+
+    /// LD [FF00 + u8], A.
+    pub fn ld_io_u8_a(&mut self, bus: &mut Bus) {
+        let offset = self.imm_byte(bus) as u16;
+
+        bus.write_byte(0xFF00u16.wrapping_add(offset), self.reg.a, true);
+    }
+
+    /// ADD SP, i8.
+    pub fn add_sp_i8(&mut self, bus: &mut Bus) {
+        let offset = self.imm_byte(bus) as i8 as i16 as u16;
+        let sp = self.reg.sp;
+
+        self.reg.sp = sp.wrapping_add(offset);
+
+        self.internal_cycle(bus);
+        self.internal_cycle(bus);
+
+        self.reg.set_flag(Flags::Z, false);
+        self.reg.set_flag(Flags::N, false);
+        self.reg
+            .set_flag(Flags::H, (offset & 0xF) + (sp & 0xF) > 0xF);
+        self.reg
+            .set_flag(Flags::C, (offset & 0xFF) + (sp & 0xFF) > 0xFF);
+    }
+
+    /// LD A, [FF00 + u8].
+    pub fn ld_a_io_u8(&mut self, bus: &mut Bus) {
+        let offset = self.imm_byte(bus) as u16;
+
+        self.reg.a = bus.read_byte(0xFF00u16.wrapping_add(offset), true);
+    }
+
+    /// LD HL, SP + i8.
+    pub fn ld_hl_sp_i8(&mut self, bus: &mut Bus) {
+        let offset = self.imm_byte(bus) as i8 as i16 as u16;
+        let sp = self.reg.sp;
+
+        self.reg.set_hl(sp.wrapping_add(offset));
+        self.internal_cycle(bus);
+
+        self.reg.set_flag(Flags::Z, false);
+        self.reg.set_flag(Flags::N, false);
+        self.reg
+            .set_flag(Flags::H, (offset & 0xF) + (sp & 0xF) > 0xF);
+        self.reg
+            .set_flag(Flags::C, (offset & 0xFF) + (sp & 0xFF) > 0xFF);
+    }
+
+    /// POP R16.
+    pub fn pop_r16(&mut self, bus: &mut Bus, r16: u8) {
+        let lower = bus.read_byte(self.reg.sp, true);
+        self.reg.sp = self.reg.sp.wrapping_add(1);
+
+        let upper = bus.read_byte(self.reg.sp, true);
+        self.reg.sp = self.reg.sp.wrapping_add(1);
+
+        let value = u16::from_le_bytes([lower, upper]);
+
+        self.write_r16::<3>(r16, value);
+    }
+
+    /// RETI.
+    pub fn reti(&mut self, bus: &mut Bus) {
+        self.unconditional_ret(bus);
+        self.ime = true;
+    }
+
+    /// JP HL.
+    pub fn jp_hl(&mut self) {
+        self.reg.pc = self.reg.get_hl();
+    }
+
+    /// LD SP, HL.
+    pub fn ld_sp_hl(&mut self, bus: &mut Bus) {
+        self.reg.sp = self.reg.get_hl();
+        self.internal_cycle(bus);
+    }
+
+    /// JP (unconditional).
+    pub fn unconditional_jp(&mut self, bus: &mut Bus) {
+        let lower = self.imm_byte(bus);
+        let upper = self.imm_byte(bus);
+
+        let jump_address = u16::from_le_bytes([lower, upper]);
+
+        self.reg.pc = jump_address;
+        self.internal_cycle(bus);
+    }
+
+    /// JP (conditional).
+    pub fn conditional_jp(&mut self, bus: &mut Bus, condition: u8) {
+        let lower = self.imm_byte(bus);
+        let upper = self.imm_byte(bus);
+
+        let jump_address = u16::from_le_bytes([lower, upper]);
+
+        if self.get_condition(condition) {
+            self.reg.pc = jump_address;
+            self.internal_cycle(bus);
+        }
+    }
+
+    /// RLC R8.
+    pub fn rlc_r8(&mut self, bus: &mut Bus, r8: u8) {
+        let value = self.read_r8(bus, r8);
+        let result = value.rotate_left(1);
+
+        self.write_r8(bus, r8, result);
+
+        self.reg.set_flag(Flags::Z, result == 0);
+        self.reg.set_flag(Flags::N, false);
+        self.reg.set_flag(Flags::H, false);
+        self.reg.set_flag(Flags::C, (value & 0x80) != 0);
+    }
+
+    /// RRC R8.
+    pub fn rrc_r8(&mut self, bus: &mut Bus, r8: u8) {
+        let value = self.read_r8(bus, r8);
+        let result = value.rotate_right(1);
+
+        self.write_r8(bus, r8, result);
+
+        self.reg.set_flag(Flags::Z, result == 0);
+        self.reg.set_flag(Flags::N, false);
+        self.reg.set_flag(Flags::H, false);
+        self.reg.set_flag(Flags::C, (value & 0x01) != 0);
+    }
+
+    /// RL R8.
+    pub fn rl_r8(&mut self, bus: &mut Bus, r8: u8) {
+        let value = self.read_r8(bus, r8);
+        let carry = self.reg.get_flag(Flags::C) as u8;
+        let result = (value << 1) | carry;
+
+        self.write_r8(bus, r8, result);
+
+        self.reg.set_flag(Flags::Z, result == 0);
+        self.reg.set_flag(Flags::N, false);
+        self.reg.set_flag(Flags::H, false);
+        self.reg.set_flag(Flags::C, (value & 0x80) != 0);
+    }
+
+    /// RR r8.
+    pub fn rr_r8(&mut self, bus: &mut Bus, r8: u8) {
+        let value = self.read_r8(bus, r8);
+        let carry = self.reg.get_flag(Flags::C) as u8;
+        let result = (value >> 1) | (carry << 7);
+
+        self.write_r8(bus, r8, result);
+
+        self.reg.set_flag(Flags::Z, result == 0);
+        self.reg.set_flag(Flags::N, false);
+        self.reg.set_flag(Flags::H, false);
+        self.reg.set_flag(Flags::C, (value & 0x01) != 0);
+    }
+
+    /// SLA R8.
+    pub fn sla_r8(&mut self, bus: &mut Bus, r8: u8) {
+        let value = self.read_r8(bus, r8);
+        let result = value << 1;
+
+        self.write_r8(bus, r8, result);
+
+        self.reg.set_flag(Flags::Z, result == 0);
+        self.reg.set_flag(Flags::N, false);
+        self.reg.set_flag(Flags::H, false);
+        self.reg.set_flag(Flags::C, (value & 0x80) != 0);
+    }
+
+    /// SRA R8.
+    pub fn sra_r8(&mut self, bus: &mut Bus, r8: u8) {
+        let value = self.read_r8(bus, r8);
+        let result = (value >> 1) | (value & 0x80);
+
+        self.write_r8(bus, r8, result);
+
+        self.reg.set_flag(Flags::Z, result == 0);
+        self.reg.set_flag(Flags::N, false);
+        self.reg.set_flag(Flags::H, false);
+        self.reg.set_flag(Flags::C, (value & 0x01) != 0);
+    }
+
+    /// SWAP R8.
+    pub fn swap_r8(&mut self, bus: &mut Bus, r8: u8) {
+        let value = self.read_r8(bus, r8);
+        let result = (value << 4) | (value >> 4);
+
+        self.write_r8(bus, r8, result);
+
+        self.reg.set_flag(Flags::Z, result == 0);
+        self.reg.set_flag(Flags::N, false);
+        self.reg.set_flag(Flags::H, false);
+        self.reg.set_flag(Flags::C, false);
+    }
+
+    // SRL R8.
+    pub fn srl_r8(&mut self, bus: &mut Bus, r8: u8) {
+        let value = self.read_r8(bus, r8);
+        let result = value >> 1;
+
+        self.write_r8(bus, r8, result);
+
+        self.reg.set_flag(Flags::Z, result == 0);
+        self.reg.set_flag(Flags::N, false);
+        self.reg.set_flag(Flags::H, false);
+        self.reg.set_flag(Flags::C, (value & 0x01) != 0);
+    }
+
+    // BIT bit, R8.
+    pub fn bit_r8(&mut self, bus: &mut Bus, r8: u8, bit: u8) {
+        let value = self.read_r8(bus, r8) & (1 << bit);
+
+        self.reg.set_flag(Flags::Z, value == 0);
+        self.reg.set_flag(Flags::N, false);
+        self.reg.set_flag(Flags::H, true);
+    }
+
+    // RES bit, R8.
+    pub fn res_r8(&mut self, bus: &mut Bus, r8: u8, bit: u8) {
+        let value = self.read_r8(bus, r8);
+        let mask = !(1 << bit);
+        let result = value & mask;
+
+        self.write_r8(bus, r8, result);
+    }
+
+    /// SET bit, R8.
+    pub fn set_r8(&mut self, bus: &mut Bus, r8: u8, bit: u8) {
+        let value = self.read_r8(bus, r8) | (1 << bit);
+
+        self.write_r8(bus, r8, value);
+    }
+
+    /// CALL (conditional).
+    pub fn conditional_call(&mut self, bus: &mut Bus, condition: u8) {
+        let lower_imm = self.imm_byte(bus);
+        let upper_imm = self.imm_byte(bus);
+
+        let address = u16::from_le_bytes([lower_imm, upper_imm]);
+
+        if self.get_condition(condition) {
+            self.internal_cycle(bus);
+
+            let [lower, upper] = self.reg.pc.to_le_bytes();
+
+            self.reg.sp = self.reg.sp.wrapping_sub(1);
+            bus.write_byte(self.reg.sp, upper, true);
+
+            self.reg.sp = self.reg.sp.wrapping_sub(1);
+            bus.write_byte(self.reg.sp, lower, true);
+
+            self.reg.pc = address;
+        }
+    }
+
+    /// CALL (unconditional).
+    pub fn unconditional_call(&mut self, bus: &mut Bus) {
+        let lower_imm = self.imm_byte(bus);
+        let upper_imm = self.imm_byte(bus);
+
+        let address = u16::from_le_bytes([lower_imm, upper_imm]);
+
+        self.internal_cycle(bus);
+
+        let [lower, upper] = self.reg.pc.to_le_bytes();
+
+        self.reg.sp = self.reg.sp.wrapping_sub(1);
+        bus.write_byte(self.reg.sp, upper, true);
+
+        self.reg.sp = self.reg.sp.wrapping_sub(1);
+        bus.write_byte(self.reg.sp, lower, true);
+
+        self.reg.pc = address;
+    }
+
+    /// PUSH R16.
+    pub fn push_r16(&mut self, bus: &mut Bus, r16: u8) {
+        let value = self.read_r16::<3>(r16);
+        let [lower, upper] = value.to_le_bytes();
+
+        self.internal_cycle(bus);
+
+        self.reg.sp = self.reg.sp.wrapping_sub(1);
+        bus.write_byte(self.reg.sp, upper, true);
+
+        self.reg.sp = self.reg.sp.wrapping_sub(1);
+        bus.write_byte(self.reg.sp, lower, true);
     }
 }

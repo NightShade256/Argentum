@@ -1,234 +1,134 @@
-use crate::common::MemInterface;
-
-// Todo
-//
-// 1. MBC1 and MBC5 (maybe MBC2?)
-// 2. Save Files for Battery Buffered RAM (unsure how to structure API).
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 
 /// RAM Size corresponding to indices
 /// in cartridge headers.
-/// Only contains till 32 KBytes
-/// since we only implement MBC1 and MBC3.
-const RAM_SIZES: [usize; 4] = [0x0000, 0x0500, 0x2000, 0x8000];
+const RAM_SIZES: [usize; 6] = [0x0000, 0x0000, 0x2000, 0x8000, 0x20000, 0x10000];
 
 /// Trait implemented by all cartridges.
-pub trait Cartridge: MemInterface {
+pub trait Cartridge {
     /// Return the title of the game.
     fn game_title(&self) -> String;
+
+    /// Read a byte from the given address.
+    fn read_byte(&self, addr: u16) -> u8;
+
+    /// Write a byte to the given address.
+    fn write_byte(&mut self, addr: u16, value: u8);
 }
 
 /// Cartridge with just two ROM banks.
 pub struct RomOnly {
     /// Two ROM banks each of 4KB.
-    memory: Box<[u8; 0x8000]>,
+    rom: Vec<u8>,
 }
 
 impl RomOnly {
     /// Create a new `RomOnly` instance.
-    pub fn new(rom_buffer: &[u8]) -> Self {
-        assert_eq!(rom_buffer.len(), 0x8000);
-
-        // Load the cartridge into memory.
-        let mut memory = Box::new([0; 0x8000]);
-        memory.copy_from_slice(rom_buffer);
-
-        Self { memory }
+    pub fn new(rom: &[u8]) -> Self {
+        Self { rom: rom.to_vec() }
     }
 }
 
-impl MemInterface for RomOnly {
+impl Cartridge for RomOnly {
+    fn game_title(&self) -> String {
+        String::from_utf8_lossy(&self.rom[0x134..0x0143]).into()
+    }
+
     fn read_byte(&self, addr: u16) -> u8 {
-        self.memory[addr as usize]
+        self.rom[addr as usize]
     }
 
     fn write_byte(&mut self, _: u16, _: u8) {}
 }
 
-impl Cartridge for RomOnly {
-    fn game_title(&self) -> String {
-        String::from_utf8_lossy(&self.memory[0x134..0x0143]).into()
-    }
-}
-
 /// Cartridge with the MBC1 chip.
-/// Max 2MB ROM and 32KB RAM.
+/// Max 16 MBit ROM and 256 KBit RAM.
 pub struct Mbc1 {
-    /// ROM with a maximum size of 2 MB.
-    memory: Vec<u8>,
+    /// ROM with a maximum size of 16 MBit.
+    rom: Vec<u8>,
 
-    /// The ROM bank that is currently mapped
-    /// to the addresses 0x4000 to 0x7FFF.
-    rom_bank: usize,
+    /// RAM with a maximum size of 256Kbit.
+    ram: Vec<u8>,
 
-    /// The ROM banking mode register.
+    /// RAM gate register.
+    /// Used to enable access to the external RAM.
+    ram_enabled: bool,
+
+    /// ROM bank register (lower).
+    /// Stores the lower 5 bits of the ROM bank.
+    /// The lower 5 bits cannot contain an zero bit pattern.
+    rom_bank_lower: u8,
+
+    /// ROM bank register (upper).
+    /// Stores the upper 2 bits of the ROM bank.
+    rom_bank_upper: u8,
+
+    /// The banking mode currently in use.
     banking_mode: bool,
 
-    /// External RAM with a maximum size of 32 KB.
-    external_ram: Vec<u8>,
+    /// The number of ROM banks in the cartridge.
+    rom_banks: usize,
 
-    /// Is the external RAM enabled currently enabled?
-    external_ram_enabled: bool,
-
-    /// The current external RAM bank that is mapped
-    /// to the addresses 0xA000 to 0xBFFF.
-    /// OR the two upper bits of ROM Bank number.
-    rom_ram_bank: usize,
+    /// The number of RAM banks in the cartridge.
+    ram_banks: usize,
 }
 
 impl Mbc1 {
-    /// Create a new `Mbc3` instance.
-    pub fn new(rom_buffer: &[u8]) -> Self {
-        // Load ROM into memory.
-        let mut memory = vec![0u8; rom_buffer.len()];
-        memory.copy_from_slice(rom_buffer);
-
-        // Initialize external ram if any.
-        let external_ram = vec![0u8; RAM_SIZES[rom_buffer[0x0149] as usize]];
-
+    /// Create a new `Mbc1` instance.
+    pub fn new(rom: &[u8]) -> Self {
         Self {
-            memory,
-            rom_bank: 1,
+            rom: rom.to_vec(),
+            ram: vec![0u8; RAM_SIZES[rom[0x0149] as usize]],
+            ram_enabled: false,
+            rom_bank_lower: 1,
+            rom_bank_upper: 0,
             banking_mode: false,
-            external_ram,
-            external_ram_enabled: false,
-            rom_ram_bank: 0,
-        }
-    }
-}
-
-impl MemInterface for Mbc1 {
-    fn read_byte(&self, addr: u16) -> u8 {
-        match addr {
-            0x0000..=0x3FFF => {
-                if !self.banking_mode || self.memory[0x0148] <= 0x04 {
-                    self.memory[addr as usize]
-                } else {
-                    self.memory[(self.rom_ram_bank * 0x20 * 0x4000) + addr as usize]
-                }
-            }
-
-            // Each bank is 0x4000 in length.
-            0x4000..=0x7FFF => {
-                if !self.banking_mode || self.memory[0x0148] <= 0x04 {
-                    self.memory[(self.rom_bank * 0x4000) + (addr - 0x4000) as usize]
-                } else {
-                    self.memory[(((self.rom_ram_bank * 0x20) | self.rom_bank) * 0x4000)
-                        + (addr - 0x4000) as usize]
-                }
-            }
-
-            // We only read valid data if the external RAM was previously enabled.
-            0xA000..=0xBFFF if self.external_ram_enabled => {
-                if !self.banking_mode || self.memory[0x0149] <= 0x02 {
-                    self.external_ram[(addr - 0xA000) as usize]
-                } else {
-                    self.external_ram[(self.rom_ram_bank * 0x2000) + (addr - 0xA000) as usize]
-                }
-            }
-
-            _ => 0xFF,
-        }
-    }
-
-    fn write_byte(&mut self, addr: u16, value: u8) {
-        match addr {
-            // External RAM enable register.
-            0x0000..=0x1FFF => {
-                self.external_ram_enabled = (value & 0x0F) == 0x0A;
-            }
-
-            // ROM bank register.
-            // Bank 01/21/41/61 is implicitly selected on a 0x00 write.
-            0x2000..=0x3FFF => {
-                self.rom_bank = if (value & 0x1F) == 0 {
-                    1
-                } else {
-                    value & ((1 << (self.memory[0x0148] + 1)) - 1)
-                } as usize;
-            }
-
-            0x4000..=0x5FFF => {
-                self.rom_ram_bank = (value & 0x03) as usize;
-            }
-
-            0x6000..=0x7FFF => {
-                self.banking_mode = (value & 0x01) != 0;
-            }
-
-            // We only write data if the external RAM was previously enabled.
-            0xA000..=0xBFFF if self.external_ram_enabled => {
-                if !self.banking_mode || self.memory[0x0149] <= 0x02 {
-                    self.external_ram[(addr - 0xA000) as usize] = value;
-                } else {
-                    self.external_ram[(self.rom_ram_bank * 0x2000) + (addr - 0xA000) as usize] =
-                        value;
-                }
-            }
-
-            _ => {}
+            rom_banks: 2 * 2usize.pow(rom[0x0148] as u32),
+            ram_banks: (RAM_SIZES[rom[0x0149] as usize] >> 13) as usize,
         }
     }
 }
 
 impl Cartridge for Mbc1 {
     fn game_title(&self) -> String {
-        String::from_utf8_lossy(&self.memory[0x134..0x0143]).into()
+        String::from_utf8_lossy(&self.rom[0x134..0x0143]).into()
     }
-}
 
-/// Cartridge with the MBC3 chip.
-/// Max 2MB ROM and 32KB RAM.
-pub struct Mbc3 {
-    /// ROM with a maximum size of 2 MB.
-    memory: Vec<u8>,
-
-    /// The ROM bank that is currently mapped
-    /// to the addresses 0x4000 to 0x7FFF.
-    rom_bank: usize,
-
-    /// External RAM with a maximum size of 32 KB.
-    external_ram: Vec<u8>,
-
-    /// Is the external RAM enabled currently enabled?
-    external_ram_enabled: bool,
-
-    /// The current external RAM bank that is mapped
-    /// to the addresses 0xA000 to 0xBFFF.
-    ram_bank: usize,
-}
-
-impl Mbc3 {
-    /// Create a new `Mbc3` instance.
-    pub fn new(rom_buffer: &[u8]) -> Self {
-        // Load ROM into memory.
-        let mut memory = vec![0u8; rom_buffer.len()];
-        memory.copy_from_slice(rom_buffer);
-
-        // Initialize external ram if any.
-        let external_ram = vec![0u8; RAM_SIZES[rom_buffer[0x0149] as usize]];
-
-        Self {
-            memory,
-            rom_bank: 1,
-            external_ram,
-            external_ram_enabled: false,
-            ram_bank: 0,
-        }
-    }
-}
-
-impl MemInterface for Mbc3 {
     fn read_byte(&self, addr: u16) -> u8 {
         match addr {
-            // Only ROM bank 0 is ever mapped to this range.
-            0x0000..=0x3FFF => self.memory[addr as usize],
+            0x0000..=0x3FFF => {
+                let bank = if self.banking_mode {
+                    (self.rom_bank_upper as usize) << 5
+                } else {
+                    0
+                } % self.rom_banks;
 
-            // Each bank is 0x4000 in length.
-            0x4000..=0x7FFF => self.memory[(self.rom_bank * 0x4000) + (addr - 0x4000) as usize],
+                let addr = (bank * 0x4000) + addr as usize;
 
-            // We only read valid data if the external RAM was previously enabled.
-            0xA000..=0xBFFF if self.external_ram_enabled => {
-                self.external_ram[(self.ram_bank * 0x2000) + (addr - 0xA000) as usize]
+                self.rom[addr]
+            }
+
+            0x4000..=0x7FFF => {
+                let bank = ((self.rom_bank_lower as usize) | ((self.rom_bank_upper as usize) << 5))
+                    % self.rom_banks;
+
+                let addr = (bank * 0x4000) + (addr as usize - 0x4000);
+
+                self.rom[addr]
+            }
+
+            0xA000..=0xBFFF if self.ram_enabled => {
+                let bank = if self.banking_mode {
+                    self.rom_bank_upper as usize
+                } else {
+                    0
+                } % self.ram_banks;
+
+                let addr = (bank * 0x2000) + (addr as usize - 0xA000);
+
+                self.ram[addr]
             }
 
             _ => 0xFF,
@@ -237,26 +137,137 @@ impl MemInterface for Mbc3 {
 
     fn write_byte(&mut self, addr: u16, value: u8) {
         match addr {
-            // External RAM enable register.
             0x0000..=0x1FFF => {
-                self.external_ram_enabled = (value & 0x0F) == 0x0A;
+                self.ram_enabled = (value & 0x0F) == 0b1010;
             }
 
-            // ROM bank register.
-            // Bank 1 is implicitly selected on a 0x00 write.
-            // Since Bank 0 is always mapped to 0x0000 - 0x3FFF.
             0x2000..=0x3FFF => {
-                self.rom_bank = if value == 0 { 1 } else { value } as usize;
+                if (value & 0b11111) == 0 {
+                    self.rom_bank_lower = 1;
+                } else {
+                    self.rom_bank_lower = value & 0b11111;
+                }
             }
 
-            // Not going to emulate RTC.
-            0x4000..=0x5FFF if value <= 0x03 => {
-                self.ram_bank = value as usize;
+            0x4000..=0x5FFF => {
+                self.rom_bank_upper = value & 0b11;
             }
 
-            // We only write data if the external RAM was previously enabled.
-            0xA000..=0xBFFF if self.external_ram_enabled => {
-                self.external_ram[(self.ram_bank * 0x2000) + (addr - 0xA000) as usize] = value;
+            0x6000..=0x7FFF => {
+                self.banking_mode = (value & 0b1) != 0;
+            }
+
+            0xA000..=0xBFFF if self.ram_enabled => {
+                let bank = if self.banking_mode {
+                    self.rom_bank_upper as usize
+                } else {
+                    0
+                } % self.ram_banks;
+
+                let addr = (bank * 0x2000) + (addr as usize - 0xA000);
+
+                self.ram[addr] = value;
+            }
+
+            _ => log::warn!("Write to external RAM occurred without first enabling it."),
+        }
+    }
+}
+
+/// Cartridge with the MBC3 chip.
+/// Max 16 Mbit ROM and 256 KBit RAM.
+pub struct Mbc3 {
+    /// ROM with a maximum size of 16 MBit.
+    rom: Vec<u8>,
+
+    /// RAM with a maximum size of 256 Kbit.
+    ram: Vec<u8>,
+
+    /// RAM gate register.
+    /// Used to enable access to the external RAM and timer.
+    ram_enabled: bool,
+
+    /// ROM Bank register.
+    /// Used to store the selected ROM bank.
+    rom_bank: u8,
+
+    /// RAMB register.
+    /// Used to store the 4 bits of the RAM bank in use.
+    ram_bank: u8,
+
+    /// The number of ROM banks in the cartridge.
+    rom_banks: usize,
+
+    /// The number of RAM banks in the cartridge.
+    ram_banks: usize,
+}
+
+impl Mbc3 {
+    /// Create a new `Mbc3` instance.
+    pub fn new(rom: &[u8]) -> Self {
+        Self {
+            rom: rom.to_vec(),
+            ram: vec![0u8; RAM_SIZES[rom[0x0149] as usize]],
+            ram_enabled: false,
+            rom_bank: 1,
+            ram_bank: 0,
+            rom_banks: 2 * 2usize.pow(rom[0x0148] as u32),
+            ram_banks: (RAM_SIZES[rom[0x0149] as usize] >> 13) as usize,
+        }
+    }
+}
+
+impl Cartridge for Mbc3 {
+    fn game_title(&self) -> String {
+        String::from_utf8_lossy(&self.rom[0x134..0x0143]).into()
+    }
+
+    fn read_byte(&self, addr: u16) -> u8 {
+        match addr {
+            0x0000..=0x3FFF => self.rom[addr as usize],
+
+            0x4000..=0x7FFF => {
+                let bank = self.rom_bank as usize % self.rom_banks;
+
+                let addr = (bank * 0x4000) + (addr as usize - 0x4000);
+
+                self.rom[addr]
+            }
+
+            0xA000..=0xBFFF if self.ram_enabled => {
+                let addr =
+                    (0x2000 * (self.ram_bank as usize % self.ram_banks)) + (addr as usize - 0xA000);
+
+                self.ram[addr]
+            }
+
+            _ => 0xFF,
+        }
+    }
+
+    fn write_byte(&mut self, addr: u16, value: u8) {
+        match addr {
+            0x0000..=0x1FFF => {
+                self.ram_enabled = (value & 0x0F) == 0b1010;
+            }
+
+            0x2000..=0x3FFF => {
+                self.rom_bank = if (value & 0b0111_1111) == 0 {
+                    1
+                } else {
+                    value & 0b0111_1111
+                };
+            }
+
+            0x4000..=0x5FFF => {
+                self.ram_bank = value & 0b11;
+            }
+
+            0xA000..=0xBFFF if self.ram_enabled => {
+                let addr =
+                    (0x2000 * (self.ram_bank as usize % self.ram_banks)) + (addr as usize - 0xA000);
+
+                self.ram[addr] = value;
             }
 
             _ => {}
@@ -264,8 +275,110 @@ impl MemInterface for Mbc3 {
     }
 }
 
-impl Cartridge for Mbc3 {
+/// Cartridge with the MBC5 chip.
+/// Max 64 Mbit ROM and 1 MBit RAM.
+pub struct Mbc5 {
+    /// ROM with a maximum size of 64 MBit.
+    rom: Vec<u8>,
+
+    /// RAM with a maximum size of 1 Mbit.
+    ram: Vec<u8>,
+
+    /// RAM gate register.
+    /// Used to enable access to the external RAM.
+    ram_enabled: bool,
+
+    /// ROMB0 register.
+    /// Used to store the lower 8 bits of the ROM bank.
+    rom_bank_lower: u8,
+
+    /// ROMB1 register.
+    /// Used to store the upper 1 bit of the ROM bank.
+    rom_bank_upper: u8,
+
+    /// RAMB register.
+    /// Used to store the 4 bits of the RAM bank in use.
+    ram_bank: u8,
+
+    /// The number of ROM banks in the cartridge.
+    rom_banks: usize,
+
+    /// The number of RAM banks in the cartridge.
+    ram_banks: usize,
+}
+
+impl Mbc5 {
+    /// Create a new `Mbc5` instance.
+    pub fn new(rom: &[u8]) -> Self {
+        Self {
+            rom: rom.to_vec(),
+            ram: vec![0u8; RAM_SIZES[rom[0x0149] as usize]],
+            ram_enabled: false,
+            rom_bank_lower: 1,
+            rom_bank_upper: 0,
+            ram_bank: 0,
+            rom_banks: 2 * 2usize.pow(rom[0x0148] as u32),
+            ram_banks: (RAM_SIZES[rom[0x0149] as usize] >> 13) as usize,
+        }
+    }
+}
+
+impl Cartridge for Mbc5 {
     fn game_title(&self) -> String {
-        String::from_utf8_lossy(&self.memory[0x134..0x0143]).into()
+        String::from_utf8_lossy(&self.rom[0x134..0x0143]).into()
+    }
+
+    fn read_byte(&self, addr: u16) -> u8 {
+        match addr {
+            0x0000..=0x3FFF => self.rom[addr as usize],
+
+            0x4000..=0x7FFF => {
+                let mut bank =
+                    ((self.rom_bank_upper as usize) << 8) | (self.rom_bank_lower as usize);
+
+                bank %= self.rom_banks;
+
+                let addr = (bank * 0x4000) + (addr as usize - 0x4000);
+
+                self.rom[addr]
+            }
+
+            0xA000..=0xBFFF if self.ram_enabled => {
+                let addr =
+                    (0x2000 * (self.ram_bank as usize % self.ram_banks)) + (addr as usize - 0xA000);
+
+                self.ram[addr]
+            }
+
+            _ => 0xFF,
+        }
+    }
+
+    fn write_byte(&mut self, addr: u16, value: u8) {
+        match addr {
+            0x0000..=0x1FFF => {
+                self.ram_enabled = value == 0b0000_1010;
+            }
+
+            0x2000..=0x2FFF => {
+                self.rom_bank_lower = value;
+            }
+
+            0x3000..=0x3FFF => {
+                self.rom_bank_upper = value & 0b1;
+            }
+
+            0x4000..=0x5FFF => {
+                self.ram_bank = value & 0b1111;
+            }
+
+            0xA000..=0xBFFF if self.ram_enabled => {
+                let addr = (0x2000 * self.ram_bank as usize) + (addr as usize - 0xA000);
+
+                self.ram[addr] = value;
+            }
+
+            _ => {}
+        }
     }
 }

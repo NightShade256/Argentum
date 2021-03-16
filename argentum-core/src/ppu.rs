@@ -1,8 +1,9 @@
 //! Contains implementation of the Game Boy PPU.
 
-use bitflags::bitflags;
+use alloc::boxed::Box;
+use alloc::vec::Vec;
 
-use crate::common::MemInterface;
+use bitflags::bitflags;
 
 /// Palette for the framebuffer.
 /// 0 - White
@@ -10,9 +11,7 @@ use crate::common::MemInterface;
 /// 2 - Dark Gray
 /// 3 - Black
 /// Alpha is FF in all cases.
-///
-/// Palette is equal to the palette of BGB.
-const COLOR_PALETTE: [u32; 4] = [0xE0F8D0FF, 0x88C070FF, 0x346856FF, 0x081820FF];
+const COLOR_PALETTE: [u32; 4] = [0xFED018FF, 0xD35600FF, 0x5E1210FF, 0x0D0405FF];
 
 bitflags! {
     /// Struct that represents the LCD control register.
@@ -149,8 +148,8 @@ pub struct Ppu {
     pub framebuffer: Box<[u8; 160 * 144 * 4]>,
 }
 
-impl MemInterface for Ppu {
-    fn read_byte(&self, addr: u16) -> u8 {
+impl Ppu {
+    pub fn read_byte(&self, addr: u16) -> u8 {
         match addr {
             0x8000..=0x9FFF => self.vram[(addr - 0x8000) as usize],
             0xFE00..=0xFE9F => self.oam[(addr - 0xFE00) as usize],
@@ -171,7 +170,7 @@ impl MemInterface for Ppu {
         }
     }
 
-    fn write_byte(&mut self, addr: u16, value: u8) {
+    pub fn write_byte(&mut self, addr: u16, value: u8) {
         match addr {
             0x8000..=0x9FFF => self.vram[(addr - 0x8000) as usize] = value,
             0xFE00..=0xFE9F => self.oam[(addr - 0xFE00) as usize] = value,
@@ -180,7 +179,7 @@ impl MemInterface for Ppu {
             0xFF41 => self.stat = Stat::from_bits_truncate(value),
             0xFF42 => self.scy = value,
             0xFF43 => self.scx = value,
-            0xFF44 => {} // LY is read only.
+            0xFF44 => {}
             0xFF45 => self.lyc = value,
             0xFF47 => self.bgp = value,
             0xFF48 => self.obp0 = value,
@@ -191,30 +190,37 @@ impl MemInterface for Ppu {
             _ => unreachable!(),
         }
     }
-}
 
-impl Ppu {
     /// Create a new `Ppu` instance.
     pub fn new() -> Self {
-        Self {
+        let mut ppu = Self {
             vram: Box::new([0; 0x2000]),
             oam: Box::new([0; 0xA0]),
             ly: 0,
             lyc: 0,
-            lcdc: Lcdc::empty(),
+            lcdc: Lcdc::from_bits_truncate(0x91),
             stat: Stat::empty(),
             scy: 0,
             scx: 0,
-            bgp: 0,
-            obp0: 0,
-            obp1: 0,
+            bgp: 0xFC,
+            obp0: 0xFF,
+            obp1: 0xFF,
             wx: 0,
             wy: 0,
             window_line: 0,
             current_mode: PpuModes::OamSearch,
             total_cycles: 0,
             framebuffer: Box::new([0; 160 * 144 * 4]),
+        };
+
+        // Fill in the shade 0b00 into the framebuffer.
+        let colour_bytes = COLOR_PALETTE[0].to_be_bytes();
+
+        for pixel in ppu.framebuffer.chunks_exact_mut(4) {
+            pixel.copy_from_slice(&colour_bytes);
         }
+
+        ppu
     }
 
     /// Change the PPU's current mode.
@@ -281,9 +287,13 @@ impl Ppu {
         self.render_sprites();
     }
 
-    /// Tick the PPU by the given T-cycles.
-    pub fn tick(&mut self, t_elapsed: u32, if_reg: &mut u8) {
-        self.total_cycles += t_elapsed;
+    /// Tick the PPU by 1 M cycle.
+    pub fn tick(&mut self, if_reg: &mut u8) {
+        if !self.lcdc.contains(Lcdc::LCD_ENABLE) {
+            return;
+        }
+
+        self.total_cycles += 4;
 
         // The actual PPU timings are not fixed.
         // They vary depending upon the number of sprites
@@ -524,7 +534,7 @@ impl Ppu {
         // 2. The sprite that appeared earlier in the OAM RAM will draw
         //    over the sprite with same X coordinates.
         sprites.sort_by(|&a, &b| {
-            use std::cmp::Ordering;
+            use core::cmp::Ordering;
 
             let res = a.1.x.cmp(&b.1.x);
 

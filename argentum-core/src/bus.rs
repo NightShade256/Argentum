@@ -1,12 +1,8 @@
-//! Contains implementation of the Game Boy memory bus interface.
+use alloc::boxed::Box;
 
-use crate::cartridge::*;
-use crate::common::MemInterface;
-use crate::joypad::Joypad;
-use crate::ppu::Ppu;
-use crate::timers::Timers;
+use crate::{cartridge::*, joypad::Joypad, ppu::Ppu, timers::Timers};
 
-/// The Game Boy memory bus.
+/// Implementation of the Game Boy memory bus.
 pub struct Bus {
     // The inserted cartridge.
     pub cartridge: Box<dyn Cartridge>,
@@ -17,29 +13,52 @@ pub struct Bus {
     // High RAM.
     pub high_ram: Box<[u8; 0x7F]>,
 
-    // Interface to timers. (DIV, TIMA & co).
+    /// The Game Boy timer apparatus.
+    /// DIV, TIMA and co.
     pub timers: Timers,
 
-    /// The joypad interface.
-    pub joypad: Joypad,
-
-    // The PPU itself.
+    /// The Game Boy PPU.
+    /// Contains VRAM, OAM RAM and drawing logic.
     pub ppu: Ppu,
 
-    // IF flag, mapped to 0xFF0F.
-    pub if_flag: u8,
+    /// The Game Boy joypad subsystem.
+    pub joypad: Joypad,
 
-    // IE flag, mapped to 0xFFFF.
-    pub ie_flag: u8,
+    /// $FF0F - IF register. (Set bits here to request interrupts).
+    pub if_reg: u8,
 
-    // NR50 - Sound Control
-    // Just a stub.
-    nr50: u8,
+    /// $FFFF - IE register. (Set bits here to enable interrupts).
+    pub ie_reg: u8,
 }
 
-impl MemInterface for Bus {
-    fn read_byte(&self, addr: u16) -> u8 {
-        match addr {
+impl Bus {
+    /// Create a new `Bus` instance.
+    pub fn new(rom: &[u8]) -> Self {
+        let cartridge: Box<dyn Cartridge> = match rom[0x0147] {
+            0x00 => Box::new(RomOnly::new(rom)),
+            0x01..=0x03 => Box::new(Mbc1::new(rom)),
+            0x0F..=0x13 => Box::new(Mbc3::new(rom)),
+            0x19..=0x1E => Box::new(Mbc5::new(rom)),
+
+            _ => panic!("ROM ONLY + MBC(1/3/5) cartridges are all that is currently supported."),
+        };
+
+        Self {
+            cartridge,
+            work_ram: Box::new([0; 0x2000]),
+            high_ram: Box::new([0; 0x7F]),
+            timers: Timers::new(),
+            ppu: Ppu::new(),
+            joypad: Joypad::new(),
+            ie_reg: 0,
+            if_reg: 0,
+        }
+    }
+
+    /// Read a byte from the given address.
+    /// Tick the components if specified.
+    pub fn read_byte(&mut self, addr: u16, tick: bool) -> u8 {
+        let value = match addr {
             // ROM Banks.
             0x0000..=0x7FFF => self.cartridge.read_byte(addr),
 
@@ -47,7 +66,6 @@ impl MemInterface for Bus {
             0x8000..=0x9FFF => self.ppu.read_byte(addr),
 
             // External RAM
-            // TODO
             0xA000..=0xBFFF => self.cartridge.read_byte(addr),
 
             // Work RAM.
@@ -62,19 +80,16 @@ impl MemInterface for Bus {
             // Not Usable
             0xFEA0..=0xFEFF => 0xFF,
 
-            // P1 or Joypad Register.
+            // P1 - JOYP register.
             0xFF00 => self.joypad.read_byte(addr),
 
-            // DIV, TIMA, TMA, TAC.
+            // DIV, TIMA and co.
             0xFF04..=0xFF07 => self.timers.read_byte(addr),
 
             // IF register.
-            0xFF0F => self.if_flag,
+            0xFF0F => self.if_reg,
 
-            // Sound (Stub)
-            0xFF24 => self.nr50,
-
-            // PPU registers.
+            // PPU's IO registers.
             0xFF40..=0xFF45 | 0xFF47..=0xFF4B => self.ppu.read_byte(addr),
 
             // DMA transfer request.
@@ -84,15 +99,21 @@ impl MemInterface for Bus {
             0xFF80..=0xFFFE => self.high_ram[(addr - 0xFF80) as usize],
 
             // IE register.
-            0xFFFF => self.ie_flag,
+            0xFFFF => self.ie_reg,
 
-            // Unused.
             _ => 0xFF,
+        };
+
+        if tick {
+            self.tick();
         }
+
+        value
     }
 
-    /// Write a byte to the specified address.
-    fn write_byte(&mut self, addr: u16, value: u8) {
+    /// Write a byte to the given address.
+    /// Tick the components if specified.
+    pub fn write_byte(&mut self, addr: u16, value: u8, tick: bool) {
         match addr {
             // ROM Banks.
             0x0000..=0x7FFF => self.cartridge.write_byte(addr, value),
@@ -101,7 +122,6 @@ impl MemInterface for Bus {
             0x8000..=0x9FFF => self.ppu.write_byte(addr, value),
 
             // External RAM
-            // TODO
             0xA000..=0xBFFF => self.cartridge.write_byte(addr, value),
 
             // Work RAM.
@@ -116,19 +136,16 @@ impl MemInterface for Bus {
             // Not Usable
             0xFEA0..=0xFEFF => {}
 
-            // P1 or Joypad Register.
+            // P1 - JOYP register.
             0xFF00 => self.joypad.write_byte(addr, value),
 
-            // DIV, TIMA, TMA, TAC.
+            // DIV, TIMA and co.
             0xFF04..=0xFF07 => self.timers.write_byte(addr, value),
 
             // IF register.
-            0xFF0F => self.if_flag = value,
+            0xFF0F => self.if_reg = value,
 
-            // Sound (Stub)
-            0xFF24 => self.nr50 = value,
-
-            // PPU registers.
+            // PPU's IO register.
             0xFF40..=0xFF45 | 0xFF47..=0xFF4B => self.ppu.write_byte(addr, value),
 
             // DMA transfer request.
@@ -136,7 +153,9 @@ impl MemInterface for Bus {
                 let source = (value as u16) * 0x100;
 
                 for i in 0..0xA0 {
-                    self.write_byte(0xFE00 + i, self.read_byte(source + i));
+                    let byte = self.read_byte(source + i, false);
+
+                    self.write_byte(0xFE00 + i, byte, false);
                 }
             }
 
@@ -144,52 +163,28 @@ impl MemInterface for Bus {
             0xFF80..=0xFFFE => self.high_ram[(addr - 0xFF80) as usize] = value,
 
             // IE register.
-            0xFFFF => self.ie_flag = value,
+            0xFFFF => self.ie_reg = value,
 
-            // Unused.
             _ => {}
         }
-    }
-}
 
-impl Bus {
-    /// Create a new `Bus` instance.
-    pub fn new(rom_buffer: &[u8]) -> Self {
-        let cartridge: Box<dyn Cartridge> = match rom_buffer[0x0147] {
-            0x00 => Box::new(RomOnly::new(rom_buffer)),
-            0x01..=0x03 => Box::new(Mbc1::new(rom_buffer)),
-            0x0F..=0x13 => Box::new(Mbc3::new(rom_buffer)),
-
-            _ => panic!("ROM ONLY + MBC1 + MBC3 cartridges are all that is currently supported."),
-        };
-
-        Self {
-            cartridge,
-            work_ram: Box::new([0; 0x2000]),
-            high_ram: Box::new([0; 0x7F]),
-            timers: Timers::new(),
-            joypad: Joypad::new(),
-            ppu: Ppu::new(),
-            if_flag: 0,
-            ie_flag: 0,
-            nr50: 0,
+        if tick {
+            self.tick();
         }
     }
 
     /// Skip the bootrom, and initialize all the registers.
     pub fn skip_bootrom(&mut self) {
-        self.ppu.write_byte(0xFF40, 0x91);
-        self.ppu.write_byte(0xFF47, 0xFC);
-        self.ppu.write_byte(0xFF48, 0xFF);
-        self.ppu.write_byte(0xFF49, 0xFF);
-
-        self.nr50 = 0x77;
+        self.write_byte(0xFF40, 0x91, false);
+        self.write_byte(0xFF47, 0xFC, false);
+        self.write_byte(0xFF48, 0xFF, false);
+        self.write_byte(0xFF49, 0xFF, false);
     }
 
-    /// Tick all the components on the bus by the given T-cycles.
-    pub fn tick_components(&mut self, t_elapsed: u32) {
-        self.timers.tick(t_elapsed, &mut self.if_flag);
-        self.ppu.tick(t_elapsed, &mut self.if_flag);
-        self.joypad.tick(t_elapsed, &mut self.if_flag);
+    /// Tick the components on the Bus.
+    pub fn tick(&mut self) {
+        self.timers.tick(&mut self.if_reg);
+        self.joypad.tick(&mut self.if_reg);
+        self.ppu.tick(&mut self.if_reg);
     }
 }
