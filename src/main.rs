@@ -1,4 +1,3 @@
-use std::time::{Duration, Instant};
 use std::{env, path::PathBuf};
 
 use argentum_core::{GameBoy, GbKey};
@@ -10,6 +9,8 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
+
+mod fps_limiter;
 
 const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -92,13 +93,12 @@ pub fn main() {
     let window = initialize_window(&event_loop);
     let mut pixels = initialize_pixels(&window);
 
-    // Stores the time of the occurence of the last frame.
-    let mut last_frame = Instant::now();
+    let mut fps_limiter = fps_limiter::FpsLimiter::new();
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::MainEventsCleared => {
             // Record the time of the frame.
-            last_frame = Instant::now();
+            fps_limiter.update();
 
             // Request a screen redraw.
             window.request_redraw();
@@ -115,15 +115,9 @@ pub fn main() {
 
             // Render the Pixels framebuffer onto the screen.
             pixels.render().expect("Failed to render framebuffer.");
-
-            // Limit the FPS to roughly 59.73 FPS.
-            let now = Instant::now();
-            let target = last_frame + Duration::from_secs_f64(1.0 / 59.73);
-
-            if now < target {
-                std::thread::sleep(target - now);
-            }
         }
+
+        Event::RedrawEventsCleared => fps_limiter.limit(),
 
         Event::WindowEvent {
             event: WindowEvent::CloseRequested,

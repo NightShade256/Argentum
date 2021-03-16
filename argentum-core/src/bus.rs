@@ -7,6 +7,12 @@ pub struct Bus {
     // The inserted cartridge.
     pub cartridge: Box<dyn Cartridge>,
 
+    // 8 KB of Work RAM.
+    pub work_ram: Box<[u8; 0x2000]>,
+
+    // High RAM.
+    pub high_ram: Box<[u8; 0x7F]>,
+
     /// The Game Boy timer apparatus.
     /// DIV, TIMA and co.
     pub timers: Timers,
@@ -23,8 +29,6 @@ pub struct Bus {
 
     /// $FFFF - IE register. (Set bits here to enable interrupts).
     pub ie_reg: u8,
-
-    pub memory: Box<[u8; 0x10000]>,
 }
 
 impl Bus {
@@ -40,12 +44,13 @@ impl Bus {
 
         Self {
             cartridge,
+            work_ram: Box::new([0; 0x2000]),
+            high_ram: Box::new([0; 0x7F]),
             timers: Timers::new(),
             ppu: Ppu::new(),
             joypad: Joypad::new(),
             ie_reg: 0,
             if_reg: 0,
-            memory: Box::new([0; 0x10000]),
         }
     }
 
@@ -62,6 +67,18 @@ impl Bus {
             // External RAM
             0xA000..=0xBFFF => self.cartridge.read_byte(addr),
 
+            // Work RAM.
+            0xC000..=0xDFFF => self.work_ram[(addr - 0xC000) as usize],
+
+            // Echo RAM.
+            0xE000..=0xFDFF => self.work_ram[(addr - 0xE000) as usize],
+
+            // OAM RAM, rerouted to PPU.
+            0xFE00..=0xFE9F => self.ppu.read_byte(addr),
+
+            // Not Usable
+            0xFEA0..=0xFEFF => 0xFF,
+
             // P1 - JOYP register.
             0xFF00 => self.joypad.read_byte(addr),
 
@@ -74,13 +91,16 @@ impl Bus {
             // PPU's IO registers.
             0xFF40..=0xFF45 | 0xFF47..=0xFF4B => self.ppu.read_byte(addr),
 
-            // OAM RAM, rerouted to PPU.
-            0xFE00..=0xFE9F => self.ppu.read_byte(addr),
+            // DMA transfer request.
+            0xFF46 => 0xFF,
+
+            // High RAM.
+            0xFF80..=0xFFFE => self.high_ram[(addr - 0xFF80) as usize],
 
             // IE register.
             0xFFFF => self.ie_reg,
 
-            _ => self.memory[addr as usize],
+            _ => 0xFF,
         };
 
         if tick {
@@ -102,6 +122,18 @@ impl Bus {
 
             // External RAM
             0xA000..=0xBFFF => self.cartridge.write_byte(addr, value),
+
+            // Work RAM.
+            0xC000..=0xDFFF => self.work_ram[(addr - 0xC000) as usize] = value,
+
+            // Echo RAM.
+            0xE000..=0xFDFF => self.work_ram[(addr - 0xE000) as usize] = value,
+
+            // OAM RAM, rerouted to PPU.
+            0xFE00..=0xFE9F => self.ppu.write_byte(addr, value),
+
+            // Not Usable
+            0xFEA0..=0xFEFF => {}
 
             // P1 - JOYP register.
             0xFF00 => self.joypad.write_byte(addr, value),
@@ -126,13 +158,13 @@ impl Bus {
                 }
             }
 
-            // OAM RAM, rerouted to PPU.
-            0xFE00..=0xFE9F => self.ppu.write_byte(addr, value),
+            // High RAM.
+            0xFF80..=0xFFFE => self.high_ram[(addr - 0xFF80) as usize] = value,
 
             // IE register.
             0xFFFF => self.ie_reg = value,
 
-            _ => self.memory[addr as usize] = value,
+            _ => {}
         }
 
         if tick {
