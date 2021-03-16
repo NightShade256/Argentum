@@ -11,9 +11,7 @@ use bitflags::bitflags;
 /// 2 - Dark Gray
 /// 3 - Black
 /// Alpha is FF in all cases.
-///
-/// Palette is equal to the palette of BGB.
-const COLOR_PALETTE: [u32; 4] = [0xE0F8D0FF, 0x88C070FF, 0x346856FF, 0x081820FF];
+const COLOR_PALETTE: [u32; 4] = [0xFED018FF, 0xD35600FF, 0x5E1210FF, 0x0D0405FF];
 
 bitflags! {
     /// Struct that represents the LCD control register.
