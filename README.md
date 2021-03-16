@@ -4,14 +4,13 @@ A simple Game Boy (DMG) emulator written in Rust.
 
 ## About
 
-This is a toy emulator. I wrote this emulator to learn more about emulation.
-This emulator is not bug-free, nor it should be taken as a reference.
+Argentum GB is a simple Game Boy (DMG) only emulator I wrote during 2021.
+It is a fairly accurate emulator that tries to achieve sub-instruction (M-cycle) accuracy.
 
-Some features missing from this emulator are,
+The emulator Passes Blargg's CPU instruction, instruction timing and memory timing tests. It also
+passes the Mooneye GB timer, MBC tests and DMG Acid2.
 
-1. APU (Audio Processing Unit)
-2. MBC2, MBC5, and some other mappers.
-3. CGB support.
+The things missing from the emulator include Audio support and MBC2 mappers.
 
 ## Building
 
@@ -27,7 +26,7 @@ and to execute a ROM,
 ./argentum-gb <ROM FILE>
 ```
 
-Binaries are provided in a Releases.
+Binaries are provided in the GitHub Releases section.
 
 ## Screenshots
 
