@@ -36,6 +36,8 @@ impl GameBoy {
     }
 
     pub fn skip_bootrom(&mut self) {
+        log::info!("Skipping bootrom, and initializing...");
+
         self.cpu.skip_bootrom();
         self.bus.skip_bootrom();
     }

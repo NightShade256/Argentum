@@ -21,6 +21,10 @@ struct Opt {
     /// The Game Boy ROM file to execute.
     #[structopt(parse(from_os_str))]
     rom_file: PathBuf,
+
+    /// Turn on basic logging support.
+    #[structopt(short, long)]
+    logging: bool,
 }
 
 /// Initialize a winit window for rendering with Pixels.
@@ -80,6 +84,14 @@ pub fn main() {
     // Parse command line arguments.
     let opts: Opt = Opt::from_args();
     let rom_file = opts.rom_file;
+
+    // Setup logging.
+    if opts.logging {
+        env_logger::builder()
+            .target(env_logger::Target::Stdout)
+            .filter_module("argentum_core", log::LevelFilter::Info)
+            .init();
+    }
 
     // Read the ROM file into memory.
     let rom = std::fs::read(rom_file).expect("Failed to read the ROM file.");

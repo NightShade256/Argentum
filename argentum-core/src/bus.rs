@@ -34,14 +34,29 @@ pub struct Bus {
 impl Bus {
     /// Create a new `Bus` instance.
     pub fn new(rom: &[u8]) -> Self {
-        let cartridge: Box<dyn Cartridge> = match rom[0x0147] {
-            0x00 => Box::new(RomOnly::new(rom)),
-            0x01..=0x03 => Box::new(Mbc1::new(rom)),
-            0x0F..=0x13 => Box::new(Mbc3::new(rom)),
-            0x19..=0x1E => Box::new(Mbc5::new(rom)),
+        log::info!("ROM Information...");
 
+        let cartridge: Box<dyn Cartridge> = match rom[0x0147] {
+            0x00 => {
+                log::info!("Cartridge Type: ROM Only.");
+                Box::new(RomOnly::new(rom))
+            }
+            0x01..=0x03 => {
+                log::info!("Cartridge Type: MBC1.");
+                Box::new(Mbc1::new(rom))
+            }
+            0x0F..=0x13 => {
+                log::info!("Cartridge Type: MBC3.");
+                Box::new(Mbc3::new(rom))
+            }
+            0x19..=0x1E => {
+                log::info!("Cartridge Type: MBC5.");
+                Box::new(Mbc5::new(rom))
+            }
             _ => panic!("ROM ONLY + MBC(1/3/5) cartridges are all that is currently supported."),
         };
+
+        log::info!("Title: {}", cartridge.game_title());
 
         Self {
             cartridge,
