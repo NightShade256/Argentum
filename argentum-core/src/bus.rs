@@ -33,8 +33,9 @@ impl Bus {
         let cartridge: Box<dyn Cartridge> = match rom[0x0147] {
             0x00 => Box::new(RomOnly::new(rom)),
             0x01..=0x03 => Box::new(Mbc1::new(rom)),
+            0x19..=0x1E => Box::new(Mbc5::new(rom)),
 
-            _ => panic!("ROM ONLY + MBC1 cartridges are all that is currently supported."),
+            _ => panic!("ROM ONLY + MBC1 + MBC5 cartridges are all that is currently supported."),
         };
 
         Self {
