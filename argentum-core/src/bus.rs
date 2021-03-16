@@ -29,6 +29,9 @@ pub struct Bus {
 
     /// $FFFF - IE register. (Set bits here to enable interrupts).
     pub ie_reg: u8,
+
+    /// NR50 Register. Stubbed for now.
+    pub nr50: u8,
 }
 
 impl Bus {
@@ -67,6 +70,7 @@ impl Bus {
             joypad: Joypad::new(),
             ie_reg: 0,
             if_reg: 0,
+            nr50: 0,
         }
     }
 
@@ -103,6 +107,9 @@ impl Bus {
 
             // IF register.
             0xFF0F => self.if_reg,
+
+            // NR50 register.
+            0xFF24 => self.nr50,
 
             // PPU's IO registers.
             0xFF40..=0xFF45 | 0xFF47..=0xFF4B => self.ppu.read_byte(addr),
@@ -159,6 +166,9 @@ impl Bus {
 
             // IF register.
             0xFF0F => self.if_reg = value,
+
+            // NR50 register.
+            0xFF24 => self.nr50 = value,
 
             // PPU's IO register.
             0xFF40..=0xFF45 | 0xFF47..=0xFF4B => self.ppu.write_byte(addr, value),
