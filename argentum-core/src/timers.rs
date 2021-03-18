@@ -26,7 +26,7 @@ pub struct Timers {
     last_and_result: u8,
 
     /// The T cycles remaining for TIMA reload to occur.
-    t_remaining: i8,
+    t_remaining: Option<u8>,
 }
 
 impl Timers {
@@ -37,7 +37,7 @@ impl Timers {
             tma: 0,
             tac: 0,
             last_and_result: 0,
-            t_remaining: -1,
+            t_remaining: None,
         }
     }
 
@@ -45,14 +45,13 @@ impl Timers {
     /// 1 M-cycle = 4 T-cycles.
     pub fn tick(&mut self, if_reg: &mut u8) {
         for _ in 0..4 {
-            if self.t_remaining > -1 {
-                self.t_remaining -= 1;
+            if let Some(cycles) = self.t_remaining {
+                self.t_remaining = if cycles == 0 { None } else { Some(cycles - 1) };
             }
 
             // Reload TIMA if delay period is over.
-            if self.t_remaining == 0 {
+            if let Some(0) = self.t_remaining {
                 self.tima = self.tma;
-
                 *if_reg |= 0b0000_0100;
             }
 
@@ -89,7 +88,7 @@ impl Timers {
             // If TIMA overflowed, reload it with the value from TMA after
             // 4 T-cycles.
             if overflow {
-                self.t_remaining = 4;
+                self.t_remaining = Some(4);
             }
         }
 
@@ -115,8 +114,29 @@ impl Timers {
             // will result in it being reset to 0x00.
             0xFF04 => self.div = 0,
 
-            0xFF05 => self.tima = value,
-            0xFF06 => self.tma = value,
+            // If TIMA is written in the period of reload
+            // delay, the reload doesn't take place.
+            // If TIMA is written on the cycle TMA gets loaded into
+            // it, the write won't take place.
+            0xFF05 => {
+                if self.t_remaining != Some(0) {
+                    self.tima = value;
+
+                    // This statement only affects t_remaining > 0 cases.
+                    self.t_remaining = None;
+                }
+            }
+
+            // If TMA is written on the cycle it is loaded into TIMA
+            // the new value written will be loaded instead.
+            0xFF06 => {
+                self.tma = value;
+
+                if self.t_remaining == Some(0) {
+                    self.tima = self.tma;
+                }
+            }
+
             0xFF07 => {
                 self.tac = value;
                 self.check_falling_edge();
