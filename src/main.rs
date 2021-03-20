@@ -1,52 +1,24 @@
+mod renderer;
 use std::{env, path::PathBuf};
 
 use argentum_core::{GameBoy, GbKey};
-use pixels::{Pixels, SurfaceTexture};
-use structopt::StructOpt;
-use winit::{
-    dpi::LogicalSize,
-    event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    window::{Window, WindowBuilder},
-};
-
-mod fps_limiter;
+use clap::Clap;
+use glutin::{Api, ContextBuilder, GlProfile, GlRequest, dpi::LogicalSize, event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent}, event_loop::{ControlFlow, EventLoop}, platform::ContextTraitExt, window::WindowBuilder};
+use renderer::Renderer;
 
 const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-#[derive(StructOpt)]
-#[structopt(name = "Argentum GB")]
-#[structopt(version = PKG_VERSION, about = "A simple Game Boy (DMG) emulator.")]
+#[derive(Clap)]
+#[clap(name = "Argentum GB")]
+#[clap(version = PKG_VERSION, about = "A simple Game Boy (DMG) emulator.")]
 struct Opt {
     /// The Game Boy ROM file to execute.
-    #[structopt(parse(from_os_str))]
+    #[clap(parse(from_os_str))]
     rom_file: PathBuf,
 
     /// Turn on basic logging support.
-    #[structopt(short, long)]
+    #[clap(short, long)]
     logging: bool,
-}
-
-/// Initialize a winit window for rendering with Pixels.
-fn initialize_window(event_loop: &EventLoop<()>) -> Window {
-    WindowBuilder::new()
-        .with_decorations(true)
-        .with_title("Argentum GB")
-        .with_min_inner_size(LogicalSize::new(160, 144))
-        .with_inner_size(LogicalSize::new(480, 432))
-        .build(event_loop)
-        .expect("Failed to create a window.")
-}
-
-/// Initialize Pixels instance.
-fn initialize_pixels(window: &Window) -> Pixels {
-    let window_size = window.inner_size();
-
-    // Create a surface texture.
-    let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, window);
-
-    // Create pixels instance and return it.
-    Pixels::new(160, 144, surface_texture).expect("Failed to initialize Pixels framebuffer.")
 }
 
 /// Handle the keyboard input.
@@ -82,15 +54,15 @@ fn handle_input(gb: &mut GameBoy, input: &KeyboardInput) {
 /// Start running the emulator.
 pub fn main() {
     // Parse command line arguments.
-    let opts: Opt = Opt::from_args();
+    let opts: Opt = Opt::parse();
     let rom_file = opts.rom_file;
 
     // Setup logging.
     if opts.logging {
-        env_logger::builder()
-            .target(env_logger::Target::Stdout)
-            .filter_module("argentum_core", log::LevelFilter::Info)
-            .init();
+        // env_logger::builder()
+        //     .target(env_logger::Target::Stdout)
+        //     .filter_module("argentum_core", log::LevelFilter::Info)
+        //     .init();
     }
 
     // Read the ROM file into memory.
@@ -102,47 +74,54 @@ pub fn main() {
 
     // Create a event loop, and initialize the window and Pixels.
     let event_loop = EventLoop::new();
-    let window = initialize_window(&event_loop);
-    let mut pixels = initialize_pixels(&window);
 
-    let mut fps_limiter = fps_limiter::FpsLimiter::new();
+    let wb = WindowBuilder::new()
+        .with_decorations(true)
+        .with_title("Argentum GB")
+        .with_min_inner_size(LogicalSize::new(160, 144))
+        .with_inner_size(LogicalSize::new(480, 432));
+
+    let window = unsafe {
+        ContextBuilder::new()
+            .with_gl(GlRequest::Latest)
+            .with_gl_profile(GlProfile::Core)
+            .with_vsync(true)
+            .build_windowed(wb, &event_loop)
+            .unwrap()
+            .make_current()
+            .unwrap()
+    };
+
+    let mut renderer = Renderer::new(|s| window.get_proc_address(s) as *const _);
+
+    let window_size = window.window().inner_size();
+    renderer.set_viewport(window_size.width, window_size.height);
+
+    println!("OpenGL Context: {:#?}", window.get_api());
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::MainEventsCleared => {
-            // Record the time of the frame.
-            fps_limiter.update();
+            // // Record the time of the frame.
+            // fps_limiter.update();
 
             // Request a screen redraw.
-            window.request_redraw();
+            window.window().request_redraw();
         }
 
         Event::RedrawRequested(_) => {
             // Execute one frame's worth of instructions.
             argentum.execute_frame();
 
-            // Get the PPU's framebuffer and update Pixels' framebuffer with it.
-            pixels
-                .get_frame()
-                .copy_from_slice(argentum.get_framebuffer());
-
-            // Render the Pixels framebuffer onto the screen.
-            pixels.render().expect("Failed to render framebuffer.");
+            renderer.render_buffer(argentum.get_framebuffer());
+            window.swap_buffers().unwrap();
         }
 
-        Event::RedrawEventsCleared => fps_limiter.limit(),
-
+        //Event::RedrawEventsCleared => fps_limiter.limit(),
         Event::WindowEvent {
             event: WindowEvent::CloseRequested,
             ..
         } => {
             *control_flow = ControlFlow::Exit;
-        }
-
-        Event::WindowEvent {
-            event: WindowEvent::Resized(window_size),
-            ..
-        } if window_size.width != 0 && window_size.height != 0 => {
-            pixels.resize_surface(window_size.width, window_size.height)
         }
 
         Event::WindowEvent {
