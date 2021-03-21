@@ -1,150 +1,158 @@
-use std::os::raw::c_void;
+use std::os::raw::{c_uint, c_void};
 
-use glow::*;
+// OpenGL 3.3 core bindings by Lokathor.
+use gl33::*;
 
-const VERT_SHADER: &str = include_str!("shaders/vert.glsl");
-const FRAG_SHADER: &str = include_str!("shaders/frag.glsl");
+/// The default shaders for the renderer written in GLSL.
+const VERT_SHADER_SOURCE: &str = include_str!("shaders/vert.glsl");
+const FRAG_SHADER_SOURCE: &str = include_str!("shaders/frag.glsl");
 
-const VERTICES: [f32; 20] = [
-    1.0, 1.0, 0.0, 1.0, 0.0, 
-    1.0, -1.0, 0.0, 1.0, 1.0, 
-    -1.0, -1.0, 0.0, 0.0, 1.0,
-    -1.0, 1.0, 0.0, 0.0, 0.0,
+/// Two triangles with their vertex positions
+/// and textures coordinates.
+const VERTICES: [f32; 30] = [
+    // First Triangle
+    -1.0, 1.0, 0.0, 0.0, 0.0, -1.0, -1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0,
+    // Second Triangle
+    1.0, -1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, -1.0, -1.0, 0.0, 0.0, 1.0,
 ];
-
-const INDICES: [u32; 6] = [0, 1, 3, 1, 2, 3];
 
 /// Framebuffer renderer which uses OpenGL.
 pub struct Renderer {
-    /// The main texture that is blitted to the screen
-    /// each frame.
-    texture: Texture,
-
     /// The OpenGL context used for rendering.
-    context: Context,
+    context: GlFns,
+
+    /// The OpenGL texture that is drawn every frame.
+    texture: c_uint,
+
+    /// Vertex Array Object.
+    vao: c_uint,
+
+    /// Vertex Buffer Object.
+    vbo: c_uint,
 
     /// The shader program in use.
-    program: Program,
-
-    // VAO, VBO, EBO.
-    vao: VertexArray,
-    vbo: Buffer,
-    ebo: Buffer,
+    program: c_uint,
 }
 
 impl Renderer {
     /// Create a new renderer by providing a OpenGL function loader.
     pub fn new<F>(loader_function: F) -> Self
     where
-        F: FnMut(&str) -> *const c_void,
+        F: Fn(*const u8) -> *const c_void,
     {
         unsafe {
             // Create a OpenGL context via Glow.
-            let context = Context::from_loader_function(loader_function);
+            let context = GlFns::load_from(&loader_function)
+                .expect("Failed to load OpenGL 3.3 core functions.");
 
-            // Generate VBO, VAO, EBO.
-            let vao = context.create_vertex_array().unwrap();
-            let vbo = context.create_buffer().unwrap();
-            let ebo = context.create_buffer().unwrap();
+            // Generate VAO.
+            let mut vao: c_uint = 0;
 
-            context.bind_vertex_array(Some(vao));
+            context.GenVertexArrays(1, &mut vao as _);
 
-            context.bind_buffer(ARRAY_BUFFER, Some(vbo));
-            context.buffer_data_u8_slice(
-                ARRAY_BUFFER,
-                bytemuck::cast_slice(&VERTICES),
-                STATIC_DRAW,
+            // Generate VBO.
+            let mut vbo: c_uint = 0;
+
+            context.GenBuffers(1, &mut vbo as _);
+
+            // Bind VBO and fill it with vertex data.
+            context.BindVertexArray(vao);
+
+            context.BindBuffer(GL_ARRAY_BUFFER, vbo);
+            context.BufferData(
+                GL_ARRAY_BUFFER,
+                std::mem::size_of_val(&VERTICES) as isize,
+                VERTICES.as_ptr() as _,
+                GL_STATIC_DRAW,
             );
 
-            context.bind_buffer(ELEMENT_ARRAY_BUFFER, Some(ebo));
-            context.buffer_data_u8_slice(
-                ELEMENT_ARRAY_BUFFER,
-                bytemuck::cast_slice(&INDICES),
-                STATIC_DRAW,
-            );
-
-            context.vertex_attrib_pointer_f32(
+            // Setup vertex attribute pointers.
+            context.VertexAttribPointer(
                 0,
                 3,
-                FLOAT,
-                false,
+                GL_FLOAT,
+                GL_FALSE.0 as u8,
                 5 * std::mem::size_of::<f32>() as i32,
-                0,
+                std::ptr::null(),
             );
-            context.enable_vertex_attrib_array(0);
 
-            context.vertex_attrib_pointer_f32(
+            context.EnableVertexAttribArray(0);
+
+            context.VertexAttribPointer(
                 1,
                 2,
-                FLOAT,
-                false,
+                GL_FLOAT,
+                GL_FALSE.0 as u8,
                 5 * std::mem::size_of::<f32>() as i32,
-                3 * std::mem::size_of::<f32>() as i32,
+                (3 * std::mem::size_of::<f32>()) as *const c_void,
             );
-            context.enable_vertex_attrib_array(1);
+
+            context.EnableVertexAttribArray(1);
 
             // Compile vertex and fragment shaders.
-            let vert_shader = context
-                .create_shader(VERTEX_SHADER)
-                .expect("Failed to create the vertex shader.");
-            let frag_shader = context
-                .create_shader(FRAGMENT_SHADER)
-                .expect("Failed to create the fragment shader.");
+            let vert_shader = context.CreateShader(GL_VERTEX_SHADER);
+            let frag_shader = context.CreateShader(GL_FRAGMENT_SHADER);
 
-            context.shader_source(vert_shader, VERT_SHADER);
-            context.compile_shader(vert_shader);
+            context.ShaderSource(
+                vert_shader,
+                1,
+                &VERT_SHADER_SOURCE.as_ptr() as _,
+                &(VERT_SHADER_SOURCE.len() as i32) as _,
+            );
+            context.CompileShader(vert_shader);
 
-            context.shader_source(frag_shader, FRAG_SHADER);
-            context.compile_shader(frag_shader);
+            context.ShaderSource(
+                frag_shader,
+                1,
+                &FRAG_SHADER_SOURCE.as_ptr() as _,
+                &(FRAG_SHADER_SOURCE.len() as i32) as _,
+            );
+            context.CompileShader(frag_shader);
 
             // Compile the shader program.
-            let program = context
-                .create_program()
-                .expect("Failed to create shader program.");
+            let program = context.CreateProgram();
 
-            context.attach_shader(program, vert_shader);
-            context.attach_shader(program, frag_shader);
+            context.AttachShader(program, vert_shader);
+            context.AttachShader(program, frag_shader);
 
-            context.link_program(program);
-
-            context.use_program(Some(program));
+            context.LinkProgram(program);
+            context.UseProgram(program);
 
             // Delete the linked shaders.
-            context.delete_shader(vert_shader);
-            context.delete_shader(frag_shader);
+            context.DeleteShader(vert_shader);
+            context.DeleteShader(frag_shader);
 
             // Create a new empty texture.
-            let texture = context
-                .create_texture()
-                .expect("Failed to create OpenGL texture.");
+            let mut texture: c_uint = 0;
+
+            context.GenTextures(1, &mut texture as _);
 
             // Bind the texture, so that we can configure it.
-            context.bind_texture(TEXTURE_2D, Some(texture));
+            context.BindTexture(GL_TEXTURE_2D, texture);
 
             // Set the texture filtering options
-            context.tex_parameter_i32(TEXTURE_2D, TEXTURE_MAG_FILTER, NEAREST as i32);
-            context.tex_parameter_i32(TEXTURE_2D, TEXTURE_MIN_FILTER, NEAREST as i32);
+            context.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST.0 as i32);
+            context.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST.0 as i32);
 
             // Set the texture to be empty.
-            context.tex_image_2d(
-                TEXTURE_2D,
+            context.TexImage2D(
+                GL_TEXTURE_2D,
                 0,
-                RGBA as i32,
+                GL_RGBA.0 as i32,
                 160,
                 144,
                 0,
-                RGBA,
-                UNSIGNED_BYTE,
-                None,
+                GL_RGBA,
+                GL_UNSIGNED_BYTE,
+                std::ptr::null(),
             );
 
             Self {
-                texture,
                 context,
-                program,
+                texture,
                 vao,
                 vbo,
-                ebo,
+                program,
             }
         }
     }
@@ -153,27 +161,25 @@ impl Renderer {
     pub fn render_buffer(&mut self, buffer: &[u8]) {
         unsafe {
             // Recreate the texture with the buffer.
-            self.context.tex_sub_image_2d(
-                TEXTURE_2D,
+            self.context.TexSubImage2D(
+                GL_TEXTURE_2D,
                 0,
                 0,
                 0,
                 160,
                 144,
-                RGBA,
-                UNSIGNED_BYTE,
-                PixelUnpackData::Slice(buffer),
+                GL_RGBA,
+                GL_UNSIGNED_BYTE,
+                buffer.as_ptr() as _,
             );
 
-            //self.context.bind_texture(TEXTURE_2D, Some(self.texture));
-            //self.context.bind_vertex_array(Some(self.vao));
-            self.context.draw_elements(TRIANGLES, 6, UNSIGNED_INT, 0);
+            self.context.DrawArrays(GL_TRIANGLES, 0, 6);
         }
     }
 
     pub fn set_viewport(&mut self, width: u32, height: u32) {
         unsafe {
-            self.context.viewport(0, 0, width as i32, height as i32);
+            self.context.Viewport(0, 0, width as i32, height as i32);
         }
     }
 }
@@ -181,12 +187,10 @@ impl Renderer {
 impl Drop for Renderer {
     fn drop(&mut self) {
         unsafe {
-            self.context.delete_texture(self.texture);
-            self.context.delete_program(self.program);
-
-            self.context.delete_vertex_array(self.vao);
-            self.context.delete_buffer(self.vbo);
-            self.context.delete_buffer(self.ebo);
+            self.context.DeleteTextures(1, &self.texture as _);
+            self.context.DeleteVertexArrays(1, &self.vao as _);
+            self.context.DeleteBuffers(1, &self.vbo as _);
+            self.context.DeleteProgram(self.program);
         }
     }
 }

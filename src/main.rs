@@ -1,9 +1,16 @@
-mod renderer;
-use std::{env, path::PathBuf};
+use std::{env, ffi::CStr, path::PathBuf};
 
 use argentum_core::{GameBoy, GbKey};
 use clap::Clap;
-use glutin::{Api, ContextBuilder, GlProfile, GlRequest, dpi::LogicalSize, event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent}, event_loop::{ControlFlow, EventLoop}, platform::ContextTraitExt, window::WindowBuilder};
+use glutin::{
+    dpi::LogicalSize,
+    event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
+    event_loop::{ControlFlow, EventLoop},
+    window::WindowBuilder,
+    ContextBuilder, GlProfile, GlRequest,
+};
+
+mod renderer;
 use renderer::Renderer;
 
 const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -22,7 +29,7 @@ struct Opt {
 }
 
 /// Handle the keyboard input.
-fn handle_input(gb: &mut GameBoy, input: &KeyboardInput) {
+fn handle_keyboard_input(gb: &mut GameBoy, input: &KeyboardInput) {
     if let KeyboardInput {
         virtual_keycode: Some(keycode),
         state,
@@ -55,33 +62,30 @@ fn handle_input(gb: &mut GameBoy, input: &KeyboardInput) {
 pub fn main() {
     // Parse command line arguments.
     let opts: Opt = Opt::parse();
-    let rom_file = opts.rom_file;
 
     // Setup logging.
     if opts.logging {
-        // env_logger::builder()
-        //     .target(env_logger::Target::Stdout)
-        //     .filter_module("argentum_core", log::LevelFilter::Info)
-        //     .init();
+        env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
     }
 
     // Read the ROM file into memory.
-    let rom = std::fs::read(rom_file).expect("Failed to read the ROM file.");
+    let rom = std::fs::read(opts.rom_file).expect("Failed to read the ROM file.");
 
     // Create a Game Boy instance and skip the bootrom.
     let mut argentum = GameBoy::new(&rom);
     argentum.skip_bootrom();
 
-    // Create a event loop, and initialize the window and Pixels.
+    // Create a event loop, and initialize the window and the OpenGL based renderer.
     let event_loop = EventLoop::new();
 
     let wb = WindowBuilder::new()
         .with_decorations(true)
+        .with_resizable(false)
         .with_title("Argentum GB")
         .with_min_inner_size(LogicalSize::new(160, 144))
         .with_inner_size(LogicalSize::new(480, 432));
 
-    let window = unsafe {
+    let ctx = unsafe {
         ContextBuilder::new()
             .with_gl(GlRequest::Latest)
             .with_gl_profile(GlProfile::Core)
@@ -92,31 +96,34 @@ pub fn main() {
             .unwrap()
     };
 
-    let mut renderer = Renderer::new(|s| window.get_proc_address(s) as *const _);
+    let mut renderer = Renderer::new(|s| {
+        let c_str = unsafe { CStr::from_ptr(s as _) };
 
-    let window_size = window.window().inner_size();
-    renderer.set_viewport(window_size.width, window_size.height);
+        ctx.get_proc_address(c_str.to_str().unwrap()) as _
+    });
 
-    println!("OpenGL Context: {:#?}", window.get_api());
+    // Query the window size and set GL viewport.
+    let size = ctx.window().inner_size();
+
+    renderer.set_viewport(size.width, size.height);
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::MainEventsCleared => {
-            // // Record the time of the frame.
-            // fps_limiter.update();
-
             // Request a screen redraw.
-            window.window().request_redraw();
+            ctx.window().request_redraw();
         }
 
         Event::RedrawRequested(_) => {
             // Execute one frame's worth of instructions.
             argentum.execute_frame();
 
+            // Render the framebuffer to the backbuffer.
             renderer.render_buffer(argentum.get_framebuffer());
-            window.swap_buffers().unwrap();
+
+            // Swap the buffers to present the scene.
+            ctx.swap_buffers().unwrap();
         }
 
-        //Event::RedrawEventsCleared => fps_limiter.limit(),
         Event::WindowEvent {
             event: WindowEvent::CloseRequested,
             ..
@@ -127,7 +134,7 @@ pub fn main() {
         Event::WindowEvent {
             event: WindowEvent::KeyboardInput { input, .. },
             ..
-        } => handle_input(&mut argentum, &input),
+        } => handle_keyboard_input(&mut argentum, &input),
 
         _ => {}
     });
