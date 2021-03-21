@@ -144,8 +144,11 @@ pub struct Ppu {
     /// Total cycles ticked under the current mode.
     total_cycles: u32,
 
-    /// RGBA32 framebuffer, to be rendered by the frontend.
-    pub framebuffer: Box<[u8; 160 * 144 * 4]>,
+    /// RGBA32 framebuffer, this is the back buffer.
+    back_framebuffer: Box<[u8; 160 * 144 * 4]>,
+
+    /// RGBA32 framebuffer, this is the front buffer.
+    pub front_framebuffer: Box<[u8; 160 * 144 * 4]>,
 }
 
 impl Ppu {
@@ -210,13 +213,18 @@ impl Ppu {
             window_line: 0,
             current_mode: PpuModes::OamSearch,
             total_cycles: 0,
-            framebuffer: Box::new([0; 160 * 144 * 4]),
+            back_framebuffer: Box::new([0; 160 * 144 * 4]),
+            front_framebuffer: Box::new([0; 160 * 144 * 4]),
         };
 
         // Fill in the shade 0b00 into the framebuffer.
         let colour_bytes = COLOR_PALETTE[0].to_be_bytes();
 
-        for pixel in ppu.framebuffer.chunks_exact_mut(4) {
+        for pixel in ppu.back_framebuffer.chunks_exact_mut(4) {
+            pixel.copy_from_slice(&colour_bytes);
+        }
+
+        for pixel in ppu.front_framebuffer.chunks_exact_mut(4) {
             pixel.copy_from_slice(&colour_bytes);
         }
 
@@ -330,6 +338,10 @@ impl Ppu {
                 // The PPU actually has 154 lines instead of 144.
                 // These 10 lines are `psuedo lines` of sorts.
                 if self.ly == 154 {
+                    // Swap the copy the back buffer to the front buffer.
+                    self.front_framebuffer
+                        .copy_from_slice(self.back_framebuffer.as_ref());
+
                     self.ly = 0;
                     self.change_mode(PpuModes::OamSearch, if_reg);
                 }
@@ -347,7 +359,7 @@ impl Ppu {
         let offset = (y as usize * 160 * 4) + x as usize * 4;
         let bytes = colour.to_be_bytes();
 
-        self.framebuffer[offset..offset + 4].copy_from_slice(&bytes);
+        self.back_framebuffer[offset..offset + 4].copy_from_slice(&bytes);
     }
 
     /// Gets the colour of a particular pixel at the given `x` and `y`
@@ -355,10 +367,10 @@ impl Ppu {
     fn get_pixel(&self, x_coord: u8, y_coord: u8) -> u32 {
         let offset = (y_coord as usize * 160 * 4) + x_coord as usize * 4;
 
-        let r = self.framebuffer[offset];
-        let g = self.framebuffer[offset + 1];
-        let b = self.framebuffer[offset + 2];
-        let a = self.framebuffer[offset + 3];
+        let r = self.back_framebuffer[offset];
+        let g = self.back_framebuffer[offset + 1];
+        let b = self.back_framebuffer[offset + 2];
+        let a = self.back_framebuffer[offset + 3];
 
         ((r as u32) << 24) | ((g as u32) << 16) | ((b as u32) << 8) | (a as u32)
     }

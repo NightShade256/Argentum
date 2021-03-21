@@ -32,7 +32,7 @@ impl GameBoy {
 
     /// Get a reference to the framebuffer.
     pub fn get_framebuffer(&self) -> &[u8] {
-        self.bus.ppu.framebuffer.as_ref()
+        self.bus.ppu.front_framebuffer.as_ref()
     }
 
     pub fn skip_bootrom(&mut self) {
