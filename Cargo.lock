@@ -36,7 +36,7 @@ checksum = "000444226fcff248f2bc4c7625be32c63caccfecc2723a2b9f78a7487a49c407"
 
 [[package]]
 name = "argentum-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bitflags",
  "log",
@@ -44,7 +44,7 @@ dependencies = [
 
 [[package]]
 name = "argentum-gb"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "argentum-core",
  "clap",
