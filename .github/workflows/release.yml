@@ -17,6 +17,7 @@ jobs:
         with:
           profile: minimal
           toolchain: beta
+          default: true
       - name: Build Binary
         run: cargo build --release
       - name: Upload Artifacts
@@ -39,7 +40,8 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: stable
+          toolchain: beta
+          default: true
       - name: Build Binary
         run: cargo build --release
       - name: Upload Artifacts
