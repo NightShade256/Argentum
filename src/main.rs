@@ -10,7 +10,9 @@ use glutin::{
     ContextBuilder, GlProfile, GlRequest,
 };
 
+mod fps_limiter;
 mod renderer;
+
 use renderer::Renderer;
 
 const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -89,7 +91,6 @@ pub fn main() {
         ContextBuilder::new()
             .with_gl(GlRequest::Latest)
             .with_gl_profile(GlProfile::Core)
-            .with_vsync(true)
             .build_windowed(wb, &event_loop)
             .unwrap()
             .make_current()
@@ -107,8 +108,12 @@ pub fn main() {
 
     renderer.set_viewport(size.width, size.height);
 
+    let mut fps = fps_limiter::FpsLimiter::new();
+
     event_loop.run(move |event, _, control_flow| match event {
         Event::MainEventsCleared => {
+            fps.update();
+
             // Request a screen redraw.
             ctx.window().request_redraw();
         }
@@ -123,6 +128,8 @@ pub fn main() {
             // Swap the buffers to present the scene.
             ctx.swap_buffers().unwrap();
         }
+
+        Event::RedrawEventsCleared => fps.limit(),
 
         Event::WindowEvent {
             event: WindowEvent::CloseRequested,
