@@ -1,56 +1,37 @@
-use std::{env, path::PathBuf};
+use std::{env, ffi::CStr, path::PathBuf};
 
 use argentum_core::{GameBoy, GbKey};
-use pixels::{Pixels, SurfaceTexture};
-use structopt::StructOpt;
-use winit::{
+use clap::Clap;
+use glutin::{
     dpi::LogicalSize,
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    window::{Window, WindowBuilder},
+    window::WindowBuilder,
+    ContextBuilder, GlProfile, GlRequest,
 };
 
 mod fps_limiter;
+mod renderer;
+
+use renderer::Renderer;
 
 const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-#[derive(StructOpt)]
-#[structopt(name = "Argentum GB")]
-#[structopt(version = PKG_VERSION, about = "A simple Game Boy (DMG) emulator.")]
+#[derive(Clap)]
+#[clap(name = "Argentum GB")]
+#[clap(version = PKG_VERSION, about = "A simple Game Boy (DMG) emulator.")]
 struct Opt {
     /// The Game Boy ROM file to execute.
-    #[structopt(parse(from_os_str))]
+    #[clap(parse(from_os_str))]
     rom_file: PathBuf,
 
     /// Turn on basic logging support.
-    #[structopt(short, long)]
+    #[clap(short, long)]
     logging: bool,
 }
 
-/// Initialize a winit window for rendering with Pixels.
-fn initialize_window(event_loop: &EventLoop<()>) -> Window {
-    WindowBuilder::new()
-        .with_decorations(true)
-        .with_title("Argentum GB")
-        .with_min_inner_size(LogicalSize::new(160, 144))
-        .with_inner_size(LogicalSize::new(480, 432))
-        .build(event_loop)
-        .expect("Failed to create a window.")
-}
-
-/// Initialize Pixels instance.
-fn initialize_pixels(window: &Window) -> Pixels {
-    let window_size = window.inner_size();
-
-    // Create a surface texture.
-    let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, window);
-
-    // Create pixels instance and return it.
-    Pixels::new(160, 144, surface_texture).expect("Failed to initialize Pixels framebuffer.")
-}
-
 /// Handle the keyboard input.
-fn handle_input(gb: &mut GameBoy, input: &KeyboardInput) {
+fn handle_keyboard_input(gb: &mut GameBoy, input: &KeyboardInput) {
     if let KeyboardInput {
         virtual_keycode: Some(keycode),
         state,
@@ -82,54 +63,73 @@ fn handle_input(gb: &mut GameBoy, input: &KeyboardInput) {
 /// Start running the emulator.
 pub fn main() {
     // Parse command line arguments.
-    let opts: Opt = Opt::from_args();
-    let rom_file = opts.rom_file;
+    let opts: Opt = Opt::parse();
 
     // Setup logging.
     if opts.logging {
-        env_logger::builder()
-            .target(env_logger::Target::Stdout)
-            .filter_module("argentum_core", log::LevelFilter::Info)
-            .init();
+        env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
     }
 
     // Read the ROM file into memory.
-    let rom = std::fs::read(rom_file).expect("Failed to read the ROM file.");
+    let rom = std::fs::read(opts.rom_file).expect("Failed to read the ROM file.");
 
     // Create a Game Boy instance and skip the bootrom.
     let mut argentum = GameBoy::new(&rom);
     argentum.skip_bootrom();
 
-    // Create a event loop, and initialize the window and Pixels.
+    // Create a event loop, and initialize the window and the OpenGL based renderer.
     let event_loop = EventLoop::new();
-    let window = initialize_window(&event_loop);
-    let mut pixels = initialize_pixels(&window);
 
-    let mut fps_limiter = fps_limiter::FpsLimiter::new();
+    let wb = WindowBuilder::new()
+        .with_decorations(true)
+        .with_resizable(false)
+        .with_title("Argentum GB")
+        .with_min_inner_size(LogicalSize::new(160, 144))
+        .with_inner_size(LogicalSize::new(480, 432));
+
+    let ctx = unsafe {
+        ContextBuilder::new()
+            .with_gl(GlRequest::Latest)
+            .with_gl_profile(GlProfile::Core)
+            .build_windowed(wb, &event_loop)
+            .unwrap()
+            .make_current()
+            .unwrap()
+    };
+
+    let mut renderer = Renderer::new(|s| {
+        let c_str = unsafe { CStr::from_ptr(s as _) };
+
+        ctx.get_proc_address(c_str.to_str().unwrap()) as _
+    });
+
+    // Query the window size and set GL viewport.
+    let size = ctx.window().inner_size();
+
+    renderer.set_viewport(size.width, size.height);
+
+    let mut fps = fps_limiter::FpsLimiter::new();
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::MainEventsCleared => {
-            // Record the time of the frame.
-            fps_limiter.update();
+            fps.update();
 
             // Request a screen redraw.
-            window.request_redraw();
+            ctx.window().request_redraw();
         }
 
         Event::RedrawRequested(_) => {
             // Execute one frame's worth of instructions.
             argentum.execute_frame();
 
-            // Get the PPU's framebuffer and update Pixels' framebuffer with it.
-            pixels
-                .get_frame()
-                .copy_from_slice(argentum.get_framebuffer());
+            // Render the framebuffer to the backbuffer.
+            renderer.render_buffer(argentum.get_framebuffer());
 
-            // Render the Pixels framebuffer onto the screen.
-            pixels.render().expect("Failed to render framebuffer.");
+            // Swap the buffers to present the scene.
+            ctx.swap_buffers().unwrap();
         }
 
-        Event::RedrawEventsCleared => fps_limiter.limit(),
+        Event::RedrawEventsCleared => fps.limit(),
 
         Event::WindowEvent {
             event: WindowEvent::CloseRequested,
@@ -139,16 +139,9 @@ pub fn main() {
         }
 
         Event::WindowEvent {
-            event: WindowEvent::Resized(window_size),
-            ..
-        } if window_size.width != 0 && window_size.height != 0 => {
-            pixels.resize_surface(window_size.width, window_size.height)
-        }
-
-        Event::WindowEvent {
             event: WindowEvent::KeyboardInput { input, .. },
             ..
-        } => handle_input(&mut argentum, &input),
+        } => handle_keyboard_input(&mut argentum, &input),
 
         _ => {}
     });
