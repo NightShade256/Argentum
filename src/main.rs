@@ -2,6 +2,10 @@ use std::{env, ffi::CStr, path::PathBuf};
 
 use argentum_core::{GameBoy, GbKey};
 use clap::Clap;
+use cpal::{
+    traits::{DeviceTrait, HostTrait, StreamTrait},
+    OutputCallbackInfo,
+};
 use glutin::{
     dpi::LogicalSize,
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
@@ -77,15 +81,53 @@ pub fn main() {
     let mut argentum = GameBoy::new(&rom);
     argentum.skip_bootrom();
 
+    // Initialize CPAL, and create host, device and a stream.
+    let host = cpal::default_host();
+
+    let device = host
+        .default_output_device()
+        .expect("No audio output device found.");
+
+    // Get the device's default sample rate., and create a stream config with F32 format.
+    let default_config = device.default_output_config().unwrap();
+
+    let mut sample_clock = 0.0_f32;
+    let sample_rate = default_config.sample_rate().0 as f32;
+
+    let stream = device
+        .build_output_stream(
+            &default_config.config(),
+            move |data: &mut [f32], _: &OutputCallbackInfo| {
+                for samples in data.chunks_exact_mut(2) {
+                    sample_clock = (sample_clock + 1.0) % sample_rate;
+
+                    let sample =
+                        (sample_clock * 440.0 * 2.0 * std::f32::consts::PI / sample_rate).sin();
+
+                    samples.copy_from_slice(&[sample, sample]);
+                }
+            },
+            move |err| {
+                core::panic!("{}", err);
+            },
+        )
+        .expect("Failed to create audio output stream.");
+
     // Create a event loop, and initialize the window and the OpenGL based renderer.
     let event_loop = EventLoop::new();
 
-    let wb = WindowBuilder::new()
+    let mut wb = WindowBuilder::new()
         .with_decorations(true)
         .with_resizable(false)
         .with_title("Argentum GB")
         .with_min_inner_size(LogicalSize::new(160, 144))
         .with_inner_size(LogicalSize::new(480, 432));
+
+    if cfg!(target_os = "windows") {
+        use glutin::platform::windows::WindowBuilderExtWindows;
+
+        wb = wb.with_drag_and_drop(false);
+    }
 
     let ctx = unsafe {
         ContextBuilder::new()
@@ -106,9 +148,16 @@ pub fn main() {
     // Query the window size and set GL viewport.
     let size = ctx.window().inner_size();
 
+    // Set the viewport to the entire screen.
     renderer.set_viewport(size.width, size.height);
 
+    // Lock the FPS to roughly around 59.73
     let mut fps = fps_limiter::FpsLimiter::new();
+
+    // Start playing the stream.
+    stream
+        .play()
+        .expect("Failed to play the audio output stream.");
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::MainEventsCleared => {
