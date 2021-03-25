@@ -1,10 +1,8 @@
 //! Wrapper struct to conviniently abstract the inner workings.
 
-use alloc::vec::Vec;
+use alloc::boxed::Box;
 
-use crate::bus::Bus;
-use crate::cpu::Cpu;
-use crate::joypad::GbKey;
+use crate::{bus::Bus, cpu::Cpu, joypad::GbKey};
 
 /// T-cycles to execute per frame.
 const CYCLES_PER_FRAME: u32 = 70224;
@@ -16,9 +14,9 @@ pub struct GameBoy {
 
 impl GameBoy {
     /// Create a new `GameBoy` instance.
-    pub fn new(rom: &[u8]) -> Self {
+    pub fn new(rom: &[u8], callback: Box<dyn Fn(&[f32])>) -> Self {
         Self {
-            bus: Bus::new(rom),
+            bus: Bus::new(rom, callback),
             cpu: Cpu::new(),
         }
     }
@@ -38,7 +36,7 @@ impl GameBoy {
     }
 
     pub fn skip_bootrom(&mut self) {
-        log::info!("Skipping bootrom, and initializing...");
+        log::info!("Skipping bootrom, and running game ROM.");
 
         self.cpu.skip_bootrom();
         self.bus.skip_bootrom();
@@ -52,13 +50,5 @@ impl GameBoy {
     /// Redirects to joypad interface.
     pub fn key_up(&mut self, key: GbKey) {
         self.bus.joypad.key_up(key);
-    }
-
-    pub fn get_audio(&self) -> Vec<f32> {
-        self.bus.apu.buffer.to_vec()
-    }
-
-    pub fn is_full(&self) -> bool {
-        self.bus.apu.is_full
     }
 }

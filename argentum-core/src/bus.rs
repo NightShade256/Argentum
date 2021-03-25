@@ -21,6 +21,8 @@ pub struct Bus {
     /// Contains VRAM, OAM RAM and drawing logic.
     pub ppu: Ppu,
 
+    /// The Game Boy APU.
+    /// Contains NR** registers.
     pub apu: Apu,
 
     /// The Game Boy joypad subsystem.
@@ -35,7 +37,7 @@ pub struct Bus {
 
 impl Bus {
     /// Create a new `Bus` instance.
-    pub fn new(rom: &[u8]) -> Self {
+    pub fn new(rom: &[u8], callback: Box<dyn Fn(&[f32])>) -> Self {
         log::info!("ROM Information...");
 
         let cartridge: Box<dyn Cartridge> = match rom[0x0147] {
@@ -66,11 +68,10 @@ impl Bus {
             high_ram: Box::new([0; 0x7F]),
             timers: Timers::new(),
             ppu: Ppu::new(),
+            apu: Apu::new(callback),
             joypad: Joypad::new(),
             ie_reg: 0,
             if_reg: 0,
-
-            apu: Apu::new(),
         }
     }
 

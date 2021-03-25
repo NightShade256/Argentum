@@ -4,7 +4,6 @@ use argentum_core::{GameBoy, GbKey};
 use clap::Clap;
 use fermium::prelude::*;
 
-mod fps_limiter;
 mod renderer;
 
 use renderer::Renderer;
@@ -63,11 +62,25 @@ pub fn main() {
         let rom = std::fs::read(opts.rom_file).expect("Failed to read the ROM file.");
 
         // Create a Game Boy instance and skip the bootrom.
-        let mut argentum = GameBoy::new(&rom);
+        let mut argentum = GameBoy::new(
+            &rom,
+            Box::new(|buffer| {
+                while SDL_GetQueuedAudioSize(SDL_AudioDeviceID(1)) > 1024 * 4 {
+                    SDL_Delay(1);
+                }
+
+                SDL_QueueAudio(
+                    SDL_AudioDeviceID(1),
+                    buffer.as_ptr() as _,
+                    (std::mem::size_of::<f32>() * buffer.len()) as u32,
+                );
+            }),
+        );
+
         argentum.skip_bootrom();
 
         // Initialize SDL's video and audio subsystems.
-        if SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0 {
+        if SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER) != 0 {
             panic!("Failed to initialize SDL.");
         }
 
@@ -97,9 +110,6 @@ pub fn main() {
         // Make the context, "current".
         SDL_GL_MakeCurrent(window, context);
 
-        // Enable VSync for the window,
-        SDL_GL_SetSwapInterval(1);
-
         // Create our renderer instance, and set OpenGL viewport.
         let mut renderer = Renderer::new(|s| SDL_GL_GetProcAddress(s as _));
 
@@ -110,16 +120,25 @@ pub fn main() {
 
         renderer.set_viewport(w, h);
 
-        // Lock the FPS count to roughly around 59.73 FPS.
-        let mut fps_handler = fps_limiter::FpsLimiter::new();
+        // Setup SDL audio system.
+        let mut audio_spec: SDL_AudioSpec = std::mem::zeroed();
+
+        audio_spec.freq = 48000;
+        audio_spec.format = AUDIO_F32SYS;
+        audio_spec.channels = 2;
+        audio_spec.samples = 1024;
+        audio_spec.callback = None;
+
+        // Open audio queue with the desired spec.
+        SDL_OpenAudio(&mut audio_spec as _, std::ptr::null_mut());
+
+        // Start the audio queue.
+        SDL_PauseAudio(0);
 
         // Used to store the current polled event.
         let mut event: SDL_Event = std::mem::zeroed();
 
         'main: loop {
-            // Update the current frame time.
-            fps_handler.update();
-
             // Poll events, quit and handle input appropriately.
             while SDL_PollEvent(&mut event as _) != 0 {
                 match event.type_ {
@@ -145,12 +164,12 @@ pub fn main() {
 
             // Swap front and back buffers.
             SDL_GL_SwapWindow(window);
-
-            // Limit FPS if we are before in time of the next frame.
-            fps_handler.limit();
         }
 
         // De-init SDL subsystems, and return.
+        SDL_CloseAudio();
+        SDL_GL_DeleteContext(context);
+        SDL_DestroyWindow(window);
         SDL_Quit();
     }
 }
