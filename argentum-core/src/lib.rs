@@ -2,6 +2,7 @@
 
 extern crate alloc;
 
+mod audio;
 mod bus;
 mod cartridge;
 mod cpu;

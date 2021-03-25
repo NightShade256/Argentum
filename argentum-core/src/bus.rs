@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
 
-use crate::{cartridge::*, joypad::Joypad, ppu::Ppu, timers::Timers};
+use crate::{audio::Apu, cartridge::*, joypad::Joypad, ppu::Ppu, timers::Timers};
 
 /// Implementation of the Game Boy memory bus.
 pub struct Bus {
@@ -21,6 +21,8 @@ pub struct Bus {
     /// Contains VRAM, OAM RAM and drawing logic.
     pub ppu: Ppu,
 
+    pub apu: Apu,
+
     /// The Game Boy joypad subsystem.
     pub joypad: Joypad,
 
@@ -29,9 +31,6 @@ pub struct Bus {
 
     /// $FFFF - IE register. (Set bits here to enable interrupts).
     pub ie_reg: u8,
-
-    /// NR50 Register. Stubbed for now.
-    pub nr50: u8,
 }
 
 impl Bus {
@@ -70,7 +69,8 @@ impl Bus {
             joypad: Joypad::new(),
             ie_reg: 0,
             if_reg: 0,
-            nr50: 0,
+
+            apu: Apu::new(),
         }
     }
 
@@ -109,7 +109,7 @@ impl Bus {
             0xFF0F => self.if_reg,
 
             // NR50 register.
-            0xFF24 => self.nr50,
+            0xFF24..=0xFF26 | 0xFF16..=0xFF19 => self.apu.read_byte(addr),
 
             // PPU's IO registers.
             0xFF40..=0xFF45 | 0xFF47..=0xFF4B => self.ppu.read_byte(addr),
@@ -168,7 +168,7 @@ impl Bus {
             0xFF0F => self.if_reg = value,
 
             // NR50 register.
-            0xFF24 => self.nr50 = value,
+            0xFF24..=0xFF26 | 0xFF16..=0xFF19 => self.apu.write_byte(addr, value),
 
             // PPU's IO register.
             0xFF40..=0xFF45 | 0xFF47..=0xFF4B => self.ppu.write_byte(addr, value),
@@ -211,5 +211,6 @@ impl Bus {
         self.timers.tick(&mut self.if_reg);
         self.joypad.tick(&mut self.if_reg);
         self.ppu.tick(&mut self.if_reg);
+        self.apu.tick();
     }
 }
