@@ -1,18 +1,8 @@
-use std::{env, ffi::CStr, path::PathBuf};
+use std::{env, ffi::CString, path::PathBuf};
 
 use argentum_core::{GameBoy, GbKey};
 use clap::Clap;
-use cpal::{
-    traits::{DeviceTrait, HostTrait, StreamTrait},
-    OutputCallbackInfo,
-};
-use glutin::{
-    dpi::LogicalSize,
-    event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
-    ContextBuilder, GlProfile, GlRequest,
-};
+use fermium::prelude::*;
 
 mod fps_limiter;
 mod renderer;
@@ -34,164 +24,133 @@ struct Opt {
     logging: bool,
 }
 
-/// Handle the keyboard input.
-fn handle_keyboard_input(gb: &mut GameBoy, input: &KeyboardInput) {
-    if let KeyboardInput {
-        virtual_keycode: Some(keycode),
-        state,
-        ..
-    } = input
-    {
-        let key = match keycode {
-            VirtualKeyCode::W => Some(GbKey::UP),
-            VirtualKeyCode::A => Some(GbKey::LEFT),
-            VirtualKeyCode::S => Some(GbKey::DOWN),
-            VirtualKeyCode::D => Some(GbKey::RIGHT),
-            VirtualKeyCode::Return => Some(GbKey::START),
-            VirtualKeyCode::Space => Some(GbKey::SELECT),
-            VirtualKeyCode::Z => Some(GbKey::BUTTON_A),
-            VirtualKeyCode::X => Some(GbKey::BUTTON_B),
-            _ => None,
-        };
+/// Handle keyboard input.
+fn handle_keyboard_input(gb: &mut GameBoy, input: SDL_Scancode, is_pressed: bool) {
+    let key = match input {
+        SDL_SCANCODE_W => Some(GbKey::UP),
+        SDL_SCANCODE_A => Some(GbKey::LEFT),
+        SDL_SCANCODE_S => Some(GbKey::DOWN),
+        SDL_SCANCODE_D => Some(GbKey::RIGHT),
+        SDL_SCANCODE_RETURN => Some(GbKey::START),
+        SDL_SCANCODE_SPACE => Some(GbKey::SELECT),
+        SDL_SCANCODE_Z => Some(GbKey::BUTTON_A),
+        SDL_SCANCODE_X => Some(GbKey::BUTTON_B),
 
-        if let Some(key) = key {
-            if *state == ElementState::Pressed {
-                gb.key_down(key);
-            } else {
-                gb.key_up(key);
-            }
+        _ => None,
+    };
+
+    if let Some(key) = key {
+        if is_pressed {
+            gb.key_down(key);
+        } else {
+            gb.key_up(key);
         }
     }
 }
 
 /// Start running the emulator.
 pub fn main() {
-    // Parse command line arguments.
-    let opts: Opt = Opt::parse();
+    unsafe {
+        // Parse command line arguments.
+        let opts: Opt = Opt::parse();
 
-    // Setup logging.
-    if opts.logging {
-        env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
-    }
-
-    // Read the ROM file into memory.
-    let rom = std::fs::read(opts.rom_file).expect("Failed to read the ROM file.");
-
-    // Create a Game Boy instance and skip the bootrom.
-    let mut argentum = GameBoy::new(&rom);
-    argentum.skip_bootrom();
-
-    // Initialize CPAL, and create host, device and a stream.
-    let host = cpal::default_host();
-
-    let device = host
-        .default_output_device()
-        .expect("No audio output device found.");
-
-    // Get the device's default sample rate., and create a stream config with F32 format.
-    let default_config = device.default_output_config().unwrap();
-
-    let mut sample_clock = 0.0_f32;
-    let sample_rate = default_config.sample_rate().0 as f32;
-
-    let stream = device
-        .build_output_stream(
-            &default_config.config(),
-            move |data: &mut [f32], _: &OutputCallbackInfo| {
-                for samples in data.chunks_exact_mut(2) {
-                    sample_clock = (sample_clock + 1.0) % sample_rate;
-
-                    let sample =
-                        (sample_clock * 440.0 * 2.0 * std::f32::consts::PI / sample_rate).sin();
-
-                    samples.copy_from_slice(&[sample, sample]);
-                }
-            },
-            move |err| {
-                core::panic!("{}", err);
-            },
-        )
-        .expect("Failed to create audio output stream.");
-
-    // Create a event loop, and initialize the window and the OpenGL based renderer.
-    let event_loop = EventLoop::new();
-
-    let mut wb = WindowBuilder::new()
-        .with_decorations(true)
-        .with_resizable(false)
-        .with_title("Argentum GB")
-        .with_min_inner_size(LogicalSize::new(160, 144))
-        .with_inner_size(LogicalSize::new(480, 432));
-
-    if cfg!(target_os = "windows") {
-        use glutin::platform::windows::WindowBuilderExtWindows;
-
-        wb = wb.with_drag_and_drop(false);
-    }
-
-    let ctx = unsafe {
-        ContextBuilder::new()
-            .with_gl(GlRequest::Latest)
-            .with_gl_profile(GlProfile::Core)
-            .build_windowed(wb, &event_loop)
-            .unwrap()
-            .make_current()
-            .unwrap()
-    };
-
-    let mut renderer = Renderer::new(|s| {
-        let c_str = unsafe { CStr::from_ptr(s as _) };
-
-        ctx.get_proc_address(c_str.to_str().unwrap()) as _
-    });
-
-    // Query the window size and set GL viewport.
-    let size = ctx.window().inner_size();
-
-    // Set the viewport to the entire screen.
-    renderer.set_viewport(size.width, size.height);
-
-    // Lock the FPS to roughly around 59.73
-    let mut fps = fps_limiter::FpsLimiter::new();
-
-    // Start playing the stream.
-    stream
-        .play()
-        .expect("Failed to play the audio output stream.");
-
-    event_loop.run(move |event, _, control_flow| match event {
-        Event::MainEventsCleared => {
-            fps.update();
-
-            // Request a screen redraw.
-            ctx.window().request_redraw();
+        // Setup logging.
+        if opts.logging {
+            env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
         }
 
-        Event::RedrawRequested(_) => {
+        // Read the ROM file into memory.
+        let rom = std::fs::read(opts.rom_file).expect("Failed to read the ROM file.");
+
+        // Create a Game Boy instance and skip the bootrom.
+        let mut argentum = GameBoy::new(&rom);
+        argentum.skip_bootrom();
+
+        // Initialize SDL's video and audio subsystems.
+        if SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0 {
+            panic!("Failed to initialize SDL.");
+        }
+
+        // Set OpenGL attributes.
+        SDL_GL_SetAttribute(
+            SDL_GL_CONTEXT_PROFILE_MASK,
+            SDL_GL_CONTEXT_PROFILE_CORE.0 as i32,
+        );
+
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+
+        // Create a SDL window, and an OpenGL context.
+        let title = CString::new("Argentum GB").unwrap();
+
+        let window = SDL_CreateWindow(
+            title.as_ptr(),
+            SDL_WINDOWPOS_CENTERED,
+            SDL_WINDOWPOS_CENTERED,
+            480,
+            432,
+            SDL_WINDOW_OPENGL.0,
+        );
+
+        let context = SDL_GL_CreateContext(window);
+
+        // Make the context, "current".
+        SDL_GL_MakeCurrent(window, context);
+
+        // Enable VSync for the window,
+        SDL_GL_SetSwapInterval(1);
+
+        // Create our renderer instance, and set OpenGL viewport.
+        let mut renderer = Renderer::new(|s| SDL_GL_GetProcAddress(s as _));
+
+        let mut w: i32 = 0;
+        let mut h: i32 = 0;
+
+        SDL_GL_GetDrawableSize(window, &mut w as _, &mut h as _);
+
+        renderer.set_viewport(w, h);
+
+        // Lock the FPS count to roughly around 59.73 FPS.
+        let mut fps_handler = fps_limiter::FpsLimiter::new();
+
+        // Used to store the current polled event.
+        let mut event: SDL_Event = std::mem::zeroed();
+
+        'main: loop {
+            // Update the current frame time.
+            fps_handler.update();
+
+            // Poll events, quit and handle input appropriately.
+            while SDL_PollEvent(&mut event as _) != 0 {
+                match event.type_ {
+                    SDL_KEYDOWN => {
+                        handle_keyboard_input(&mut argentum, event.key.keysym.scancode, true);
+                    }
+
+                    SDL_KEYUP => {
+                        handle_keyboard_input(&mut argentum, event.key.keysym.scancode, false);
+                    }
+
+                    SDL_QUIT => break 'main,
+
+                    _ => {}
+                }
+            }
+
             // Execute one frame's worth of instructions.
             argentum.execute_frame();
 
             // Render the framebuffer to the backbuffer.
             renderer.render_buffer(argentum.get_framebuffer());
 
-            // Swap the buffers to present the scene.
-            ctx.swap_buffers().unwrap();
+            // Swap front and back buffers.
+            SDL_GL_SwapWindow(window);
+
+            // Limit FPS if we are before in time of the next frame.
+            fps_handler.limit();
         }
 
-        Event::RedrawEventsCleared => fps.limit(),
-
-        Event::WindowEvent {
-            event: WindowEvent::CloseRequested,
-            ..
-        } => {
-            *control_flow = ControlFlow::Exit;
-        }
-
-        Event::WindowEvent {
-            event: WindowEvent::KeyboardInput { input, .. },
-            ..
-        } => handle_keyboard_input(&mut argentum, &input),
-
-        _ => {}
-    });
+        // De-init SDL subsystems, and return.
+        SDL_Quit();
+    }
 }
