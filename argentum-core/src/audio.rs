@@ -57,6 +57,9 @@ pub struct Apu {
     /// Implementation of the custom wave channel.
     channel_three: ChannelThree,
 
+    /// Implementation of the noise wave channel.
+    channel_four: ChannelFour,
+
     /// Used to clock FS and sample generation.
     sample_clock: u32,
 
@@ -87,6 +90,7 @@ impl Apu {
             channel_one: ChannelOne::new(),
             channel_two: ChannelTwo::new(),
             channel_three: ChannelThree::new(),
+            channel_four: ChannelFour::new(),
             sample_clock: 0,
             buffer: Box::new([0.0; 1024]),
             buffer_position: 0,
@@ -108,6 +112,7 @@ impl Apu {
             self.channel_one.tick_channel();
             self.channel_two.tick_channel();
             self.channel_three.tick_channel();
+            self.channel_four.tick_channel();
 
             // Tick the frame sequencer. It generates clocks for the length,
             // envelope and sweep functions.
@@ -119,24 +124,28 @@ impl Apu {
                         self.channel_one.step_length();
                         self.channel_two.step_length();
                         self.channel_three.step_length();
+                        self.channel_four.step_length();
                     }
 
                     2 => {
                         self.channel_one.step_length();
                         self.channel_two.step_length();
                         self.channel_three.step_length();
+                        self.channel_four.step_length();
                     }
 
                     4 => {
                         self.channel_one.step_length();
                         self.channel_two.step_length();
                         self.channel_three.step_length();
+                        self.channel_four.step_length();
                     }
 
                     6 => {
                         self.channel_one.step_length();
                         self.channel_two.step_length();
                         self.channel_three.step_length();
+                        self.channel_four.step_length();
                     }
 
                     _ => {}
@@ -149,7 +158,11 @@ impl Apu {
             // and pushed to the buffer.
             if self.sample_clock % ((CPU_CLOCK / SAMPLE_RATE) as u32) == 0 {
                 self.buffer[self.buffer_position] = (self.left_volume as f32 / 7.0)
-                    * ((if (self.nr51 & 0x40) != 0 {
+                    * ((if (self.nr51 & 0x80) != 0 {
+                        self.channel_four.get_amplitude()
+                    } else {
+                        0.0
+                    } + if (self.nr51 & 0x40) != 0 {
                         self.channel_three.get_amplitude()
                     } else {
                         0.0
@@ -161,10 +174,14 @@ impl Apu {
                         self.channel_one.get_amplitude()
                     } else {
                         0.0
-                    }) / 3.0);
+                    }) / 4.0);
 
                 self.buffer[self.buffer_position + 1] = (self.right_volume as f32 / 7.0)
-                    * ((if (self.nr51 & 0x04) != 0 {
+                    * ((if (self.nr51 & 0x08) != 0 {
+                        self.channel_four.get_amplitude()
+                    } else {
+                        0.0
+                    } + if (self.nr51 & 0x04) != 0 {
                         self.channel_three.get_amplitude()
                     } else {
                         0.0
@@ -176,7 +193,7 @@ impl Apu {
                         self.channel_one.get_amplitude()
                     } else {
                         0.0
-                    }) / 3.0);
+                    }) / 4.0);
 
                 self.buffer_position += 2;
             }
@@ -516,6 +533,9 @@ pub struct ChannelThree {
     /// Output level configuration register.
     output_level: u8,
 
+    /// The volume shift specifier.
+    volume_shift: u8,
+
     /// Lower 8 bits of the channel frequency.
     nr33: u8,
 
@@ -546,6 +566,7 @@ impl ChannelThree {
             dac_enabled: false,
             nr31: 0,
             output_level: 0,
+            volume_shift: 0,
             nr33: 0,
             nr34: 0,
             frequency_timer: 0,
@@ -578,7 +599,16 @@ impl Channel for ChannelThree {
             }
             0xFF1B => self.nr31 = value,
             0xFF1C => {
-                self.output_level = (value >> 5) & 0b11;
+                self.output_level = (value & 0x60) >> 5;
+
+                self.volume_shift = match self.output_level {
+                    0b00 => 4,
+                    0b01 => 0,
+                    0b10 => 1,
+                    0b11 => 2,
+
+                    _ => unreachable!(),
+                };
             }
             0xFF1D => self.nr33 = value,
             0xFF1E => {
@@ -622,7 +652,7 @@ impl Channel for ChannelThree {
                 >> (if (self.position % 2) != 0 { 4 } else { 0 }))
                 & 0x0F;
 
-            ((sample >> self.output_level) as f32) / 7.5 - 1.0
+            ((sample >> self.volume_shift) as f32) / 7.5 - 1.0
         } else {
             0.0
         }
@@ -633,6 +663,129 @@ impl Channel for ChannelThree {
             self.nr31 -= 1;
 
             if self.nr31 == 0 {
+                self.channel_enabled = false;
+            }
+        }
+    }
+}
+
+/// Implementation of the noise channel four.
+pub struct ChannelFour {
+    /// If the channel DAC is enabled or not.
+    dac_enabled: bool,
+
+    /// Contains the five bits of the length data.
+    nr41: u8,
+
+    /// Controls the envelope function.
+    nr42: u8,
+
+    /// The polynomial counter, used to control the RNG.
+    nr43: u8,
+
+    /// Control register, which has the trigger bit.
+    nr44: u8,
+
+    /// Tells whether the channel itself it enabled.
+    /// This can be only affected by the `length` parameter.
+    channel_enabled: bool,
+
+    /// The linear feedback shift register (LFSR) generates a pseudo-random bit sequence.
+    lfsr: u16,
+
+    /// This is equal to `(2048 - frequency) * 2`
+    /// This timer is decremented every T-cycle.
+    /// When this timer reaches 0, wave generation is stepped, and
+    /// it is reloaded.
+    frequency_timer: u32,
+}
+
+impl ChannelFour {
+    pub fn new() -> Self {
+        Self {
+            dac_enabled: false,
+            nr41: 0,
+            nr42: 0,
+            nr43: 0,
+            nr44: 0,
+            channel_enabled: false,
+            lfsr: 0,
+            frequency_timer: 0,
+        }
+    }
+}
+
+impl Channel for ChannelFour {
+    fn read_byte(&self, addr: u16) -> u8 {
+        match addr {
+            0xFF20 => self.nr41,
+            0xFF21 => self.nr42,
+            0xFF22 => self.nr43,
+            0xFF23 => self.nr44,
+
+            _ => unreachable!(),
+        }
+    }
+
+    fn write_byte(&mut self, addr: u16, value: u8) {
+        match addr {
+            0xFF20 => self.nr41 = value,
+            0xFF21 => {
+                self.nr42 = value;
+
+                // Check DAC status. If top 5 bits are reset
+                // DAC will be disabled.
+                self.dac_enabled = ((self.nr42 >> 3) & 0b11111) != 0;
+            }
+            0xFF22 => self.nr43 = value,
+            0xFF23 => {
+                self.nr44 = value;
+
+                // Restart the channel iff DAC is enabled and trigger is set.
+                let trigger = (value >> 7) != 0;
+
+                if trigger && self.dac_enabled {
+                    self.channel_enabled = true;
+                }
+            }
+
+            _ => unreachable!(),
+        }
+    }
+
+    fn tick_channel(&mut self) {
+        // If the frequency timer decrement to 0, it is reloaded with the formula
+        // `divisor_code << clockshift` and wave position is advanced by one.
+        if self.frequency_timer == 0 {
+            self.frequency_timer =
+                (8 + (8 * (self.nr43 & 0x07) as u32)) << ((self.nr43 >> 4) as u32);
+
+            let xor_result = (self.lfsr & 0b01) ^ ((self.lfsr & 0b10) >> 1);
+
+            self.lfsr = (self.lfsr >> 1) | (xor_result << 14);
+
+            if ((self.nr43 >> 3) & 0b01) != 0 {
+                self.lfsr &= !(1 << 6);
+                self.lfsr |= xor_result << 6;
+            }
+        }
+
+        self.frequency_timer -= 1;
+    }
+
+    fn get_amplitude(&self) -> f32 {
+        if self.dac_enabled && self.channel_enabled {
+            (!(self.lfsr & 0b01)) as f32
+        } else {
+            0.0
+        }
+    }
+
+    fn step_length(&mut self) {
+        if ((self.nr44 >> 6) & 0x01) != 0 && (self.nr41 & 0b111111) > 0 {
+            self.nr41 -= 1;
+
+            if self.nr41 == 0 {
                 self.channel_enabled = false;
             }
         }
