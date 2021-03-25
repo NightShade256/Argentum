@@ -110,9 +110,7 @@ impl Bus {
             0xFF0F => self.if_reg,
 
             // NR50 register.
-            0xFF24..=0xFF26 | 0xFF16..=0xFF1E | 0xFF10..=0xFF14 | 0xFF30..=0xFF3F => {
-                self.apu.read_byte(addr)
-            }
+            0xFF10..=0xFF26 | 0xFF30..=0xFF3F => self.apu.read_byte(addr),
 
             // PPU's IO registers.
             0xFF40..=0xFF45 | 0xFF47..=0xFF4B => self.ppu.read_byte(addr),
@@ -171,9 +169,7 @@ impl Bus {
             0xFF0F => self.if_reg = value,
 
             // NR50 register.
-            0xFF24..=0xFF26 | 0xFF16..=0xFF1E | 0xFF10..=0xFF14 | 0xFF30..=0xFF3F => {
-                self.apu.write_byte(addr, value)
-            }
+            0xFF10..=0xFF26 | 0xFF30..=0xFF3F => self.apu.write_byte(addr, value),
 
             // PPU's IO register.
             0xFF40..=0xFF45 | 0xFF47..=0xFF4B => self.ppu.write_byte(addr, value),

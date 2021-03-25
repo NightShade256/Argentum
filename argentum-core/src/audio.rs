@@ -221,6 +221,7 @@ impl Apu {
                 nr52 |= self.channel_one.channel_enabled as u8;
                 nr52 |= (self.channel_two.channel_enabled as u8) << 1;
                 nr52 |= (self.channel_three.channel_enabled as u8) << 2;
+                nr52 |= (self.channel_four.channel_enabled as u8) << 3;
 
                 nr52
             }
@@ -233,6 +234,9 @@ impl Apu {
 
             // Channel 3 IO registers + Wave RAM.
             0xFF1A..=0xFF1E | 0xFF30..=0xFF3F => self.channel_three.read_byte(addr),
+
+            // Channel 4 IO registers.
+            0xFF20..=0xFF23 => self.channel_four.read_byte(addr),
 
             _ => unreachable!(),
         }
@@ -258,6 +262,9 @@ impl Apu {
 
             // Channel 3 IO registers + Wave RAM.
             0xFF1A..=0xFF1E | 0xFF30..=0xFF3F => self.channel_three.write_byte(addr, value),
+
+            // Channel 4 IO registers.
+            0xFF20..=0xFF23 => self.channel_four.write_byte(addr, value),
 
             _ => unreachable!(),
         }
@@ -757,8 +764,13 @@ impl Channel for ChannelFour {
         // If the frequency timer decrement to 0, it is reloaded with the formula
         // `divisor_code << clockshift` and wave position is advanced by one.
         if self.frequency_timer == 0 {
-            self.frequency_timer =
-                (8 + (8 * (self.nr43 & 0x07) as u32)) << ((self.nr43 >> 4) as u32);
+            let divisor_code = (self.nr43 & 0x07) as u32;
+
+            self.frequency_timer = (if divisor_code == 0 {
+                8
+            } else {
+                divisor_code << 4
+            }) << ((self.nr43 >> 4) as u32);
 
             let xor_result = (self.lfsr & 0b01) ^ ((self.lfsr & 0b10) >> 1);
 
@@ -775,7 +787,7 @@ impl Channel for ChannelFour {
 
     fn get_amplitude(&self) -> f32 {
         if self.dac_enabled && self.channel_enabled {
-            (!(self.lfsr & 0b01)) as f32
+            (!self.lfsr & 0b01) as f32
         } else {
             0.0
         }
