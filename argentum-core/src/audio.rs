@@ -2,7 +2,7 @@ use alloc::boxed::Box;
 
 /// The rate at which samples are consumed by the audio
 /// driver.
-pub const SAMPLE_RATE: usize = 48000;
+pub const SAMPLE_RATE: usize = 65536;
 
 /// The size of the audio sample buffer.
 pub const BUFFER_SIZE: usize = 1024;
@@ -45,6 +45,9 @@ pub struct Apu {
     /// APU enabled - Controls whether the APU is ticking.
     enabled: bool,
 
+    /// Implementation of the square wave channel one with envelope and sweep function.
+    channel_one: ChannelOne,
+
     /// Implementation of the square wave channel two with envelope function.
     channel_two: ChannelTwo,
 
@@ -72,6 +75,7 @@ impl Apu {
             right_volume: 0,
             nr51: 0,
             enabled: false,
+            channel_one: ChannelOne::new(),
             channel_two: ChannelTwo::new(),
             sample_clock: 0,
             buffer: Box::new([0.0; 1024]),
@@ -90,6 +94,7 @@ impl Apu {
             self.sample_clock = self.sample_clock.wrapping_add(1);
 
             // Tick all the connected channels.
+            self.channel_one.tick_channel();
             self.channel_two.tick_channel();
 
             // The logic of the FS goes here, but currently it's just
@@ -102,18 +107,26 @@ impl Apu {
             // and pushed to the buffer.
             if self.sample_clock % ((CPU_CLOCK / SAMPLE_RATE) as u32) == 0 {
                 self.buffer[self.buffer_position] = (self.left_volume as f32 / 7.0)
-                    * (if (self.nr51 & 0x20) != 0 {
+                    * ((if (self.nr51 & 0x20) != 0 {
                         self.channel_two.get_amplitude()
                     } else {
                         0.0
-                    });
+                    } + if (self.nr51 & 0x10) != 0 {
+                        self.channel_one.get_amplitude()
+                    } else {
+                        0.0
+                    }) / 2.0);
 
                 self.buffer[self.buffer_position + 1] = (self.right_volume as f32 / 7.0)
-                    * (if (self.nr51 & 0x02) != 0 {
+                    * ((if (self.nr51 & 0x02) != 0 {
                         self.channel_two.get_amplitude()
                     } else {
                         0.0
-                    });
+                    } + if (self.nr51 & 0x01) != 0 {
+                        self.channel_one.get_amplitude()
+                    } else {
+                        0.0
+                    }) / 2.0);
 
                 self.buffer_position += 2;
             }
@@ -136,6 +149,9 @@ impl Apu {
             0xFF25 => self.nr51,
             0xFF26 => (self.enabled as u8) << 7,
 
+            // Channel 1 IO registers.
+            0xFF10..=0xFF14 => self.channel_one.read_byte(addr),
+
             // Channel 2 IO registers.
             0xFF16..=0xFF19 => self.channel_two.read_byte(addr),
 
@@ -155,10 +171,119 @@ impl Apu {
                 self.enabled = (value >> 7) != 0;
             }
 
-            // Channel 2 IO register.
+            // Channel 1 IO registers.
+            0xFF10..=0xFF14 => self.channel_one.write_byte(addr, value),
+
+            // Channel 2 IO registers.
             0xFF16..=0xFF19 => self.channel_two.write_byte(addr, value),
 
             _ => unreachable!(),
+        }
+    }
+}
+
+/// Implementation of the square wave channel one.
+pub struct ChannelOne {
+    /// Controls the sweep functions for this channel.
+    nr10: u8,
+
+    /// Contains the wave duty pattern, and an optional
+    /// length data.
+    nr11: u8,
+
+    /// Controls envelope function for this channel.
+    nr12: u8,
+
+    /// Lower eight bits of the channel frequency.
+    nr13: u8,
+
+    /// Contains some more control bits + higher three
+    /// bits of channel frequency.
+    nr14: u8,
+
+    /// This is equal to `(2048 - frequency) * 4`
+    /// This timer is decremented every T-cycle.
+    /// When this timer reaches 0, wave generation is stepped, and
+    /// it is reloaded.
+    frequency_timer: u32,
+
+    /// The position we are currently in the wave.
+    wave_position: usize,
+
+    /// Tells whether the channel's DAC is enabled or not.
+    dac_enabled: bool,
+}
+
+impl ChannelOne {
+    pub fn new() -> Self {
+        Self {
+            nr10: 0,
+            nr11: 0,
+            nr12: 0,
+            nr13: 0,
+            nr14: 0,
+            frequency_timer: 0,
+            wave_position: 0,
+            dac_enabled: false,
+        }
+    }
+}
+
+impl Channel for ChannelOne {
+    fn read_byte(&self, addr: u16) -> u8 {
+        match addr {
+            0xFF10 => self.nr10,
+            0xFF11 => self.nr11,
+            0xFF12 => self.nr12,
+            0xFF13 => self.nr13,
+            0xFF14 => self.nr14,
+
+            _ => unreachable!(),
+        }
+    }
+
+    fn write_byte(&mut self, addr: u16, value: u8) {
+        match addr {
+            0xFF10 => self.nr10 = value,
+            0xFF11 => self.nr11 = value,
+            0xFF12 => {
+                self.nr12 = value;
+
+                // Check DAC status. If top 5 bits are reset
+                // DAC will be disabled.
+                self.dac_enabled = ((self.nr12 >> 3) & 0b11111) != 0;
+            }
+            0xFF13 => self.nr13 = value,
+            0xFF14 => self.nr14 = value,
+
+            _ => unreachable!(),
+        }
+    }
+
+    /// Tick the channel by one T-cycle.
+    fn tick_channel(&mut self) {
+        // If the frequency timer decrement to 0, it is reloaded with the formula
+        // `(2048 - frequency) * 4` and wave position is advanced by one.
+        if self.frequency_timer == 0 {
+            let frequency = (((self.nr14 & 0x07) as u32) << 8) | (self.nr13 as u32);
+
+            self.frequency_timer = (2048 - frequency) * 4;
+
+            // Wave position is wrapped, so when the position is >8 it's
+            // wrapped back to 0.
+            self.wave_position = (self.wave_position + 1) & 7;
+        }
+
+        self.frequency_timer -= 1;
+    }
+
+    /// Get the current amplitude of the channel.
+    /// The only possible values of this are 0 or 1.
+    fn get_amplitude(&self) -> f32 {
+        if self.dac_enabled {
+            WAVE_DUTY[(self.nr11 >> 6) as usize][self.wave_position] as f32
+        } else {
+            0.0
         }
     }
 }

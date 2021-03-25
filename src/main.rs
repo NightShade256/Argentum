@@ -65,7 +65,7 @@ pub fn main() {
         let mut argentum = GameBoy::new(
             &rom,
             Box::new(|buffer| {
-                while SDL_GetQueuedAudioSize(SDL_AudioDeviceID(1)) > 1024 * 4 {
+                while SDL_GetQueuedAudioSize(SDL_AudioDeviceID(1)) > 1024 * 4 * 2 {
                     SDL_Delay(1);
                 }
 
@@ -123,7 +123,7 @@ pub fn main() {
         // Setup SDL audio system.
         let mut audio_spec: SDL_AudioSpec = std::mem::zeroed();
 
-        audio_spec.freq = 48000;
+        audio_spec.freq = 65536;
         audio_spec.format = AUDIO_F32SYS;
         audio_spec.channels = 2;
         audio_spec.samples = 1024;
