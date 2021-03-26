@@ -2,7 +2,7 @@ use alloc::boxed::Box;
 
 /// The rate at which samples are consumed by the audio
 /// driver.
-pub const SAMPLE_RATE: usize = 65536;
+pub const SAMPLE_RATE: usize = 48000;
 
 /// The size of the audio sample buffer.
 pub const BUFFER_SIZE: usize = 1024;
@@ -149,6 +149,8 @@ impl Apu {
                     }
 
                     7 => {
+                        self.channel_one.step_volume();
+                        self.channel_two.step_volume();
                         self.channel_four.step_volume();
                     }
 
@@ -305,23 +307,70 @@ pub struct ChannelOne {
     /// the sound channel is then disabled.
     length_counter: u8,
 
-    /// Controls envelope function for this channel.
-    nr12: u8,
-
     /// The channel frequency value. This is controlled by NR23 and NR24.
     frequency: u16,
 
     /// Whether the length timer is enabled or not.
     length_enabled: bool,
+
+    /// The initial volume of the envelope function.
+    initial_volume: u8,
+
+    /// Whether the envelope is incrementing or decrementing in nature.
+    is_incrementing: bool,
+
+    /// The amount of volume steps through the FS for volume to
+    /// change.
+    period: u8,
+
+    /// The amount of volume steps the channels has recieved through the
+    /// FS.
+    period_timer: u8,
+
+    /// The current volume of the channel.
+    current_volume: u8,
+}
+
+impl ChannelOne {
+    /// Steps the envelope function.
+    pub fn step_volume(&mut self) {
+        if self.period != 0 {
+            if self.period_timer > 0 {
+                self.period_timer -= 1;
+            }
+
+            if self.period_timer == 0 {
+                self.period_timer = self.period;
+
+                if (self.current_volume < 0xF && self.is_incrementing)
+                    || (self.current_volume > 0 && !self.is_incrementing)
+                {
+                    if self.is_incrementing {
+                        self.current_volume += 1;
+                    } else {
+                        self.current_volume -= 1;
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl Channel for ChannelOne {
     fn read_byte(&self, addr: u16) -> u8 {
         match addr {
             0xFF10 => self.nr10,
+
             0xFF11 => (self.duty_pattern << 6) | 0b0011_1111,
-            0xFF12 => self.nr12,
+
+            0xFF12 => {
+                (self.initial_volume << 4)
+                    | (if self.is_incrementing { 0x08 } else { 0x00 })
+                    | self.period
+            }
+
             0xFF13 => 0xFF,
+
             0xFF14 => ((self.length_enabled as u8) << 6) | 0b1011_1111,
 
             _ => unreachable!(),
@@ -339,11 +388,14 @@ impl Channel for ChannelOne {
                 self.length_counter = 64 - (value & 0b0011_1111);
             }
             0xFF12 => {
-                self.nr12 = value;
+                // Update the envelope function parameters.
+                self.is_incrementing = (value & 0x08) != 0;
+                self.initial_volume = value >> 4;
+                self.period = value & 0x07;
 
                 // Check DAC status. If top 5 bits are reset
                 // DAC will be disabled.
-                self.dac_enabled = ((self.nr12 >> 3) & 0b11111) != 0;
+                self.dac_enabled = ((value >> 3) & 0b11111) != 0;
 
                 if !self.dac_enabled {
                     self.channel_enabled = false;
@@ -371,6 +423,10 @@ impl Channel for ChannelOne {
 
                 if trigger && self.dac_enabled {
                     self.channel_enabled = true;
+
+                    // Trigger the envelope function.
+                    self.period_timer = self.period;
+                    self.current_volume = self.initial_volume;
                 }
             }
 
@@ -397,7 +453,10 @@ impl Channel for ChannelOne {
     /// The only possible values of this are 0 or 1.
     fn get_amplitude(&self) -> f32 {
         if self.dac_enabled && self.channel_enabled {
-            WAVE_DUTY[self.duty_pattern as usize][self.wave_position] as f32
+            let input = WAVE_DUTY[self.duty_pattern as usize][self.wave_position] as f32
+                * self.current_volume as f32;
+
+            (input / 7.5) - 1.0
         } else {
             0.0
         }
@@ -442,14 +501,53 @@ pub struct ChannelTwo {
     /// the sound channel is then disabled.
     length_counter: u8,
 
-    /// Controls the envelope function for this channel.
-    nr22: u8,
-
     /// The channel frequency value. This is controlled by NR23 and NR24.
     frequency: u16,
 
     /// Whether the length timer is enabled or not.
     length_enabled: bool,
+
+    /// The initial volume of the envelope function.
+    initial_volume: u8,
+
+    /// Whether the envelope is incrementing or decrementing in nature.
+    is_incrementing: bool,
+
+    /// The amount of volume steps through the FS for volume to
+    /// change.
+    period: u8,
+
+    /// The amount of volume steps the channels has recieved through the
+    /// FS.
+    period_timer: u8,
+
+    /// The current volume of the channel.
+    current_volume: u8,
+}
+
+impl ChannelTwo {
+    /// Steps the envelope function.
+    pub fn step_volume(&mut self) {
+        if self.period != 0 {
+            if self.period_timer > 0 {
+                self.period_timer -= 1;
+            }
+
+            if self.period_timer == 0 {
+                self.period_timer = self.period;
+
+                if (self.current_volume < 0xF && self.is_incrementing)
+                    || (self.current_volume > 0 && !self.is_incrementing)
+                {
+                    if self.is_incrementing {
+                        self.current_volume += 1;
+                    } else {
+                        self.current_volume -= 1;
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl Channel for ChannelTwo {
@@ -462,8 +560,11 @@ impl Channel for ChannelTwo {
             // it is all set to 1s.
             0xFF16 => (self.duty_pattern << 6) | 0b0011_1111,
 
-            // TODO - Implement Envelope.
-            0xFF17 => self.nr22,
+            0xFF17 => {
+                (self.initial_volume << 4)
+                    | (if self.is_incrementing { 0x08 } else { 0x00 })
+                    | self.period
+            }
 
             // NR23 is a write only register.
             0xFF18 => 0xFF,
@@ -488,11 +589,14 @@ impl Channel for ChannelTwo {
             }
 
             0xFF17 => {
-                self.nr22 = value;
+                // Update the envelope function parameters.
+                self.is_incrementing = (value & 0x08) != 0;
+                self.initial_volume = value >> 4;
+                self.period = value & 0x07;
 
                 // Check DAC status. If top 5 bits are reset
                 // DAC will be disabled.
-                self.dac_enabled = (self.nr22 & 0b1111_1000) != 0;
+                self.dac_enabled = (value & 0b1111_1000) != 0;
 
                 if !self.dac_enabled {
                     self.channel_enabled = false;
@@ -520,6 +624,10 @@ impl Channel for ChannelTwo {
 
                 if trigger && self.dac_enabled {
                     self.channel_enabled = true;
+
+                    // Envelope is triggered.
+                    self.period_timer = self.period;
+                    self.current_volume = self.initial_volume;
                 }
             }
 
@@ -546,7 +654,10 @@ impl Channel for ChannelTwo {
     /// The only possible values of this are 0 or 1.
     fn get_amplitude(&self) -> f32 {
         if self.dac_enabled && self.channel_enabled {
-            WAVE_DUTY[self.duty_pattern as usize][self.wave_position] as f32
+            let input = WAVE_DUTY[self.duty_pattern as usize][self.wave_position] as f32
+                * self.current_volume as f32;
+
+            (input / 7.5) - 1.0
         } else {
             0.0
         }
