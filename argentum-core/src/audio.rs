@@ -87,9 +87,9 @@ impl Apu {
             right_volume: 0,
             nr51: 0,
             enabled: false,
-            channel_one: ChannelOne::new(),
+            channel_one: ChannelOne::default(),
             channel_two: ChannelTwo::default(),
-            channel_three: ChannelThree::new(),
+            channel_three: ChannelThree::default(),
             channel_four: ChannelFour::new(),
             sample_clock: 0,
             buffer: Box::new([0.0; 1024]),
@@ -271,66 +271,54 @@ impl Apu {
     }
 }
 
-/// Implementation of the square wave channel one.
+/// Implementation of the square wave channel one with envelope and sweep.
+#[derive(Default)]
 pub struct ChannelOne {
-    /// Controls the sweep functions for this channel.
-    nr10: u8,
+    /// Tells whether the channel's DAC is enabled or not.
+    dac_enabled: bool,
 
-    /// Contains the wave duty pattern, and an optional
-    /// length data.
-    nr11: u8,
-
-    /// Controls envelope function for this channel.
-    nr12: u8,
-
-    /// Lower eight bits of the channel frequency.
-    nr13: u8,
-
-    /// Contains some more control bits + higher three
-    /// bits of channel frequency.
-    nr14: u8,
+    /// Tells whether the channel itself it enabled.
+    /// This can be only affected by a trigger event.
+    channel_enabled: bool,
 
     /// This is equal to `(2048 - frequency) * 4`
     /// This timer is decremented every T-cycle.
     /// When this timer reaches 0, wave generation is stepped, and
     /// it is reloaded.
-    frequency_timer: u32,
+    frequency_timer: u16,
 
     /// The position we are currently in the wave.
     wave_position: usize,
 
-    /// Tells whether the channel's DAC is enabled or not.
-    dac_enabled: bool,
+    /// Controls the sweep functions for this channel.
+    nr10: u8,
 
-    /// Tells whether the channel itself it enabled.
-    /// This can be only affected by the `length` parameter.
-    channel_enabled: bool,
-}
+    /// The wave pattern duty currently in use.
+    duty_pattern: u8,
 
-impl ChannelOne {
-    pub fn new() -> Self {
-        Self {
-            nr10: 0,
-            nr11: 0,
-            nr12: 0,
-            nr13: 0,
-            nr14: 0,
-            frequency_timer: 0,
-            wave_position: 0,
-            dac_enabled: false,
-            channel_enabled: false,
-        }
-    }
+    /// The sound length counter. If this is >0 and bit 6 in NR24 is set
+    /// then it is decremented with clocks from FS. If this then hits 0
+    /// the sound channel is then disabled.
+    length_counter: u8,
+
+    /// Controls envelope function for this channel.
+    nr12: u8,
+
+    /// The channel frequency value. This is controlled by NR23 and NR24.
+    frequency: u16,
+
+    /// Whether the length timer is enabled or not.
+    length_enabled: bool,
 }
 
 impl Channel for ChannelOne {
     fn read_byte(&self, addr: u16) -> u8 {
         match addr {
             0xFF10 => self.nr10,
-            0xFF11 => self.nr11,
+            0xFF11 => (self.duty_pattern << 6) | 0b0011_1111,
             0xFF12 => self.nr12,
-            0xFF13 => self.nr13,
-            0xFF14 => self.nr14,
+            0xFF13 => 0xFF,
+            0xFF14 => ((self.length_enabled as u8) << 6) | 0b1011_1111,
 
             _ => unreachable!(),
         }
@@ -339,7 +327,13 @@ impl Channel for ChannelOne {
     fn write_byte(&mut self, addr: u16, value: u8) {
         match addr {
             0xFF10 => self.nr10 = value,
-            0xFF11 => self.nr11 = value,
+            0xFF11 => {
+                self.duty_pattern = (value >> 6) & 0b11;
+
+                // The length counter is calculated by the following formula,
+                // `Length Counter = (64 - Length Data)`
+                self.length_counter = 64 - (value & 0b0011_1111);
+            }
             0xFF12 => {
                 self.nr12 = value;
 
@@ -347,9 +341,17 @@ impl Channel for ChannelOne {
                 // DAC will be disabled.
                 self.dac_enabled = ((self.nr12 >> 3) & 0b11111) != 0;
             }
-            0xFF13 => self.nr13 = value,
+
+            0xFF13 => {
+                // Update frequency with the lower eight bits.
+                self.frequency = (self.frequency & 0x0700) | value as u16;
+            }
+
             0xFF14 => {
-                self.nr14 = value;
+                // Update frequency with the upper three bits.
+                self.frequency = (self.frequency & 0xFF) | (((value & 0x07) as u16) << 8);
+
+                self.length_enabled = ((value >> 6) & 0x01) != 0;
 
                 // Restart the channel iff DAC is enabled and trigger is set.
                 let trigger = (value >> 7) != 0;
@@ -368,9 +370,7 @@ impl Channel for ChannelOne {
         // If the frequency timer decrement to 0, it is reloaded with the formula
         // `(2048 - frequency) * 4` and wave position is advanced by one.
         if self.frequency_timer == 0 {
-            let frequency = (((self.nr14 & 0x07) as u32) << 8) | (self.nr13 as u32);
-
-            self.frequency_timer = (2048 - frequency) * 4;
+            self.frequency_timer = (2048 - self.frequency) * 4;
 
             // Wave position is wrapped, so when the position is >8 it's
             // wrapped back to 0.
@@ -384,19 +384,18 @@ impl Channel for ChannelOne {
     /// The only possible values of this are 0 or 1.
     fn get_amplitude(&self) -> f32 {
         if self.dac_enabled && self.channel_enabled {
-            WAVE_DUTY[(self.nr11 >> 6) as usize][self.wave_position] as f32
+            WAVE_DUTY[self.duty_pattern as usize][self.wave_position] as f32
         } else {
             0.0
         }
     }
 
     fn step_length(&mut self) {
-        if ((self.nr14 >> 6) & 0x01) != 0 && (self.nr11 & 0b111111) > 0 {
-            let timer = (self.nr11 & 0b111111) - 1;
+        if self.length_enabled && self.length_counter > 0 {
+            self.length_counter -= 1;
 
-            self.nr11 = (self.nr11 & 0b1100_0000) | timer;
-
-            if timer == 0 {
+            // The channel is disabled if the length counter is reset.
+            if self.length_counter == 0 {
                 self.channel_enabled = false;
             }
         }
@@ -544,68 +543,55 @@ impl Channel for ChannelTwo {
 }
 
 /// Implementation of the custom wave channel.
+#[derive(Default)]
 pub struct ChannelThree {
-    /// If the channel DAC is enabled or not.
+    /// Whether the channel DAC is enabled or not.
     dac_enabled: bool,
 
-    /// Sound Length configuration register.
-    nr31: u8,
-
-    /// Output level configuration register.
-    output_level: u8,
-
-    /// The volume shift specifier.
-    volume_shift: u8,
-
-    /// Lower 8 bits of the channel frequency.
-    nr33: u8,
-
-    /// Contains some more control bits + higher three
-    /// bits of channel frequency.
-    nr34: u8,
+    /// Whether the channel itself it enabled.
+    /// This can be only affected by a trigger event.
+    channel_enabled: bool,
 
     /// This is equal to `(2048 - frequency) * 2`
     /// This timer is decremented every T-cycle.
     /// When this timer reaches 0, wave generation is stepped, and
     /// it is reloaded.
-    frequency_timer: u32,
+    frequency_timer: u16,
+
+    /// The current sample being played in the wave ram.
+    wave_position: usize,
+
+    /// The sound length counter. If this is >0 and bit 6 in NR24 is set
+    /// then it is decremented with clocks from FS. If this then hits 0
+    /// the sound channel is then disabled.
+    length_counter: u8,
+
+    /// Output level configuration register.
+    /// Sets the volume shift for the wave data.
+    output_level: u8,
+
+    /// The volume shift computed from the output level
+    /// register.
+    volume_shift: u8,
+
+    /// The channel frequency value. This is controlled by NR23 and NR24.
+    frequency: u16,
+
+    /// Whether the length timer is enabled or not.
+    length_enabled: bool,
 
     /// Arbitrary 32 4-bit samples.
     wave_ram: Box<[u8; 0x10]>,
-
-    /// The current sample being played in the wave ram.
-    position: usize,
-
-    /// Tells whether the channel itself it enabled.
-    /// This can be only affected by the `length` parameter.
-    channel_enabled: bool,
-}
-
-impl ChannelThree {
-    pub fn new() -> Self {
-        Self {
-            dac_enabled: false,
-            nr31: 0,
-            output_level: 0,
-            volume_shift: 0,
-            nr33: 0,
-            nr34: 0,
-            frequency_timer: 0,
-            wave_ram: Box::new([0; 0x10]),
-            position: 0,
-            channel_enabled: false,
-        }
-    }
 }
 
 impl Channel for ChannelThree {
     fn read_byte(&self, addr: u16) -> u8 {
         match addr {
-            0xFF1A => (self.dac_enabled as u8) << 7,
-            0xFF1B => self.nr31,
-            0xFF1C => self.output_level << 5,
-            0xFF1D => self.nr33,
-            0xFF1E => self.nr34,
+            0xFF1A => ((self.dac_enabled as u8) << 7) | 0x7F,
+            0xFF1B => 0xFF,
+            0xFF1C => (self.output_level << 5) | 0x9F,
+            0xFF1D => 0xFF,
+            0xFF1E => ((self.length_enabled as u8) << 6) | 0b1011_1111,
 
             0xFF30..=0xFF3F => self.wave_ram[(addr - 0xFF30) as usize],
 
@@ -618,9 +604,13 @@ impl Channel for ChannelThree {
             0xFF1A => {
                 self.dac_enabled = (value >> 7) & 0b1 != 0;
             }
-            0xFF1B => self.nr31 = value,
+
+            0xFF1B => {
+                self.length_counter = (256_u16 - value as u16) as u8;
+            }
+
             0xFF1C => {
-                self.output_level = (value & 0x60) >> 5;
+                self.output_level = (value >> 5) & 0b11;
 
                 self.volume_shift = match self.output_level {
                     0b00 => 4,
@@ -631,9 +621,17 @@ impl Channel for ChannelThree {
                     _ => unreachable!(),
                 };
             }
-            0xFF1D => self.nr33 = value,
+
+            0xFF1D => {
+                // Update frequency with the lower eight bits.
+                self.frequency = (self.frequency & 0x0700) | value as u16;
+            }
+
             0xFF1E => {
-                self.nr34 = value;
+                // Update frequency with the upper three bits.
+                self.frequency = (self.frequency & 0xFF) | (((value & 0x07) as u16) << 8);
+
+                self.length_enabled = ((value >> 6) & 0x01) != 0;
 
                 // Restart the channel iff DAC is enabled and trigger is set.
                 let trigger = (value >> 7) != 0;
@@ -652,15 +650,13 @@ impl Channel for ChannelThree {
     /// Tick the channel by one T-cycle.
     fn tick_channel(&mut self) {
         // If the frequency timer decrement to 0, it is reloaded with the formula
-        // `(2048 - frequency) * 4` and wave position is advanced by one.
+        // `(2048 - frequency) * 2` and wave position is advanced by one.
         if self.frequency_timer == 0 {
-            let frequency = (((self.nr34 & 0x07) as u32) << 8) | (self.nr33 as u32);
+            self.frequency_timer = (2048 - self.frequency) * 2;
 
-            self.frequency_timer = (2048 - frequency) * 2;
-
-            // Wave position is wrapped, so when the position is >16 it's
+            // Wave position is wrapped, so when the position is >32 it's
             // wrapped back to 0.
-            self.position = (self.position + 1) & 15;
+            self.wave_position = (self.wave_position + 1) & 31;
         }
 
         self.frequency_timer -= 1;
@@ -669,21 +665,22 @@ impl Channel for ChannelThree {
     /// Get the current amplitude of the channel.
     fn get_amplitude(&self) -> f32 {
         if self.dac_enabled {
-            let sample = ((self.wave_ram[self.position / 2])
-                >> (if (self.position % 2) != 0 { 4 } else { 0 }))
+            let sample = ((self.wave_ram[self.wave_position / 2])
+                >> (if (self.wave_position & 1) != 0 { 4 } else { 0 }))
                 & 0x0F;
 
-            ((sample >> self.volume_shift) as f32) / 7.5 - 1.0
+            (((sample >> self.volume_shift) as f32) / 7.5) - 1.0
         } else {
             0.0
         }
     }
 
     fn step_length(&mut self) {
-        if ((self.nr34 >> 6) & 0x01) != 0 && (self.nr31 & 0b111111) > 0 {
-            self.nr31 -= 1;
+        if self.length_enabled && self.length_counter > 0 {
+            self.length_counter -= 1;
 
-            if self.nr31 == 0 {
+            // The channel is disabled if the length counter is reset.
+            if self.length_counter == 0 {
                 self.channel_enabled = false;
             }
         }
