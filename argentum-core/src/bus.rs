@@ -109,7 +109,7 @@ impl Bus {
             // IF register.
             0xFF0F => self.if_reg,
 
-            // NR50 register.
+            // APU's IO registers.
             0xFF10..=0xFF26 | 0xFF30..=0xFF3F => self.apu.read_byte(addr),
 
             // PPU's IO registers.
@@ -168,10 +168,10 @@ impl Bus {
             // IF register.
             0xFF0F => self.if_reg = value,
 
-            // NR50 register.
+            // APU's IO registers.
             0xFF10..=0xFF26 | 0xFF30..=0xFF3F => self.apu.write_byte(addr, value),
 
-            // PPU's IO register.
+            // PPU's IO registers.
             0xFF40..=0xFF45 | 0xFF47..=0xFF4B => self.ppu.write_byte(addr, value),
 
             // DMA transfer request.
