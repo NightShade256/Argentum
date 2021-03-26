@@ -90,7 +90,7 @@ impl Apu {
             channel_one: ChannelOne::default(),
             channel_two: ChannelTwo::default(),
             channel_three: ChannelThree::default(),
-            channel_four: ChannelFour::new(),
+            channel_four: ChannelFour::default(),
             sample_clock: 0,
             buffer: Box::new([0.0; 1024]),
             buffer_position: 0,
@@ -146,6 +146,10 @@ impl Apu {
                         self.channel_two.step_length();
                         self.channel_three.step_length();
                         self.channel_four.step_length();
+                    }
+
+                    7 => {
+                        self.channel_four.step_volume();
                     }
 
                     _ => {}
@@ -230,13 +234,13 @@ impl Apu {
             0xFF10..=0xFF14 => self.channel_one.read_byte(addr),
 
             // Channel 2 IO registers.
-            0xFF16..=0xFF19 => self.channel_two.read_byte(addr),
+            0xFF15..=0xFF19 => self.channel_two.read_byte(addr),
 
             // Channel 3 IO registers + Wave RAM.
             0xFF1A..=0xFF1E | 0xFF30..=0xFF3F => self.channel_three.read_byte(addr),
 
             // Channel 4 IO registers.
-            0xFF20..=0xFF23 => self.channel_four.read_byte(addr),
+            0xFF1F..=0xFF23 => self.channel_four.read_byte(addr),
 
             _ => unreachable!(),
         }
@@ -258,13 +262,13 @@ impl Apu {
             0xFF10..=0xFF14 => self.channel_one.write_byte(addr, value),
 
             // Channel 2 IO registers.
-            0xFF16..=0xFF19 => self.channel_two.write_byte(addr, value),
+            0xFF15..=0xFF19 => self.channel_two.write_byte(addr, value),
 
             // Channel 3 IO registers + Wave RAM.
             0xFF1A..=0xFF1E | 0xFF30..=0xFF3F => self.channel_three.write_byte(addr, value),
 
             // Channel 4 IO registers.
-            0xFF20..=0xFF23 => self.channel_four.write_byte(addr, value),
+            0xFF1F..=0xFF23 => self.channel_four.write_byte(addr, value),
 
             _ => unreachable!(),
         }
@@ -340,6 +344,10 @@ impl Channel for ChannelOne {
                 // Check DAC status. If top 5 bits are reset
                 // DAC will be disabled.
                 self.dac_enabled = ((self.nr12 >> 3) & 0b11111) != 0;
+
+                if !self.dac_enabled {
+                    self.channel_enabled = false;
+                }
             }
 
             0xFF13 => {
@@ -352,6 +360,11 @@ impl Channel for ChannelOne {
                 self.frequency = (self.frequency & 0xFF) | (((value & 0x07) as u16) << 8);
 
                 self.length_enabled = ((value >> 6) & 0x01) != 0;
+
+                // If length counter is zero reload it with 64.
+                if self.length_counter == 0 {
+                    self.length_counter = 64;
+                }
 
                 // Restart the channel iff DAC is enabled and trigger is set.
                 let trigger = (value >> 7) != 0;
@@ -480,6 +493,10 @@ impl Channel for ChannelTwo {
                 // Check DAC status. If top 5 bits are reset
                 // DAC will be disabled.
                 self.dac_enabled = (self.nr22 & 0b1111_1000) != 0;
+
+                if !self.dac_enabled {
+                    self.channel_enabled = false;
+                }
             }
 
             0xFF18 => {
@@ -492,6 +509,11 @@ impl Channel for ChannelTwo {
                 self.frequency = (self.frequency & 0xFF) | (((value & 0x07) as u16) << 8);
 
                 self.length_enabled = ((value >> 6) & 0x01) != 0;
+
+                // If length counter is zero reload it with 64.
+                if self.length_counter == 0 {
+                    self.length_counter = 64;
+                }
 
                 // Restart the channel iff DAC is enabled and trigger is set.
                 let trigger = (value >> 7) != 0;
@@ -564,7 +586,7 @@ pub struct ChannelThree {
     /// The sound length counter. If this is >0 and bit 6 in NR24 is set
     /// then it is decremented with clocks from FS. If this then hits 0
     /// the sound channel is then disabled.
-    length_counter: u8,
+    length_counter: u16,
 
     /// Output level configuration register.
     /// Sets the volume shift for the wave data.
@@ -603,10 +625,14 @@ impl Channel for ChannelThree {
         match addr {
             0xFF1A => {
                 self.dac_enabled = (value >> 7) & 0b1 != 0;
+
+                if !self.dac_enabled {
+                    self.channel_enabled = false;
+                }
             }
 
             0xFF1B => {
-                self.length_counter = (256_u16 - value as u16) as u8;
+                self.length_counter = 256 - value as u16;
             }
 
             0xFF1C => {
@@ -632,6 +658,11 @@ impl Channel for ChannelThree {
                 self.frequency = (self.frequency & 0xFF) | (((value & 0x07) as u16) << 8);
 
                 self.length_enabled = ((value >> 6) & 0x01) != 0;
+
+                // If length counter is zero reload it with 64.
+                if self.length_counter == 0 {
+                    self.length_counter = 256;
+                }
 
                 // Restart the channel iff DAC is enabled and trigger is set.
                 let trigger = (value >> 7) != 0;
@@ -688,47 +719,74 @@ impl Channel for ChannelThree {
 }
 
 /// Implementation of the noise channel four.
+#[derive(Default)]
 pub struct ChannelFour {
-    /// If the channel DAC is enabled or not.
+    /// Whether the channel DAC is enabled or not.
     dac_enabled: bool,
-
-    /// Contains the five bits of the length data.
-    nr41: u8,
-
-    /// Controls the envelope function.
-    nr42: u8,
-
-    /// The polynomial counter, used to control the RNG.
-    nr43: u8,
-
-    /// Control register, which has the trigger bit.
-    nr44: u8,
 
     /// Tells whether the channel itself it enabled.
     /// This can be only affected by the `length` parameter.
     channel_enabled: bool,
 
-    /// The linear feedback shift register (LFSR) generates a pseudo-random bit sequence.
-    lfsr: u16,
-
     /// This is equal to `(2048 - frequency) * 2`
     /// This timer is decremented every T-cycle.
     /// When this timer reaches 0, wave generation is stepped, and
     /// it is reloaded.
-    frequency_timer: u32,
+    frequency_timer: u16,
+
+    /// The linear feedback shift register (LFSR) generates a pseudo-random bit sequence.
+    lfsr: u16,
+
+    /// The sound length counter. If this is >0 and bit 6 in NR24 is set
+    /// then it is decremented with clocks from FS. If this then hits 0
+    /// the sound channel is then disabled.
+    length_counter: u8,
+
+    /// The polynomial counter, used to control the RNG.
+    nr43: u8,
+
+    /// Whether the length timer is enabled or not.
+    length_enabled: bool,
+
+    /// The initial volume of the envelope function.
+    initial_volume: u8,
+
+    /// Whether the envelope is incrementing or decrementing in nature.
+    is_incrementing: bool,
+
+    /// The amount of volume steps through the FS for volume to
+    /// change.
+    period: u8,
+
+    /// The amount of volume steps the channels has recieved through the
+    /// FS.
+    period_timer: u8,
+
+    /// The current volume of the channel.
+    current_volume: u8,
 }
 
 impl ChannelFour {
-    pub fn new() -> Self {
-        Self {
-            dac_enabled: false,
-            nr41: 0,
-            nr42: 0,
-            nr43: 0,
-            nr44: 0,
-            channel_enabled: false,
-            lfsr: 0,
-            frequency_timer: 0,
+    /// Steps the envelope function.
+    pub fn step_volume(&mut self) {
+        if self.period != 0 {
+            if self.period_timer > 0 {
+                self.period_timer -= 1;
+            }
+
+            if self.period_timer == 0 {
+                self.period_timer = self.period;
+
+                if (self.current_volume < 0xF && self.is_incrementing)
+                    || (self.current_volume > 0 && !self.is_incrementing)
+                {
+                    if self.is_incrementing {
+                        self.current_volume += 1;
+                    } else {
+                        self.current_volume -= 1;
+                    }
+                }
+            }
         }
     }
 }
@@ -736,10 +794,20 @@ impl ChannelFour {
 impl Channel for ChannelFour {
     fn read_byte(&self, addr: u16) -> u8 {
         match addr {
-            0xFF20 => self.nr41,
-            0xFF21 => self.nr42,
+            // NR40 does not exist.
+            0xFF1F => 0xFF,
+
+            0xFF20 => 0xFF,
+
+            0xFF21 => {
+                (self.initial_volume << 4)
+                    | (if self.is_incrementing { 0x08 } else { 0x00 })
+                    | self.period
+            }
+
             0xFF22 => self.nr43,
-            0xFF23 => self.nr44,
+
+            0xFF23 => ((self.length_enabled as u8) << 6) | 0b1011_1111,
 
             _ => unreachable!(),
         }
@@ -747,23 +815,52 @@ impl Channel for ChannelFour {
 
     fn write_byte(&mut self, addr: u16, value: u8) {
         match addr {
-            0xFF20 => self.nr41 = value,
+            // NR40 does not exist.
+            0xFF1F => {}
+
+            0xFF20 => {
+                self.length_counter = 64 - (value & 0b0011_1111);
+            }
+
             0xFF21 => {
-                self.nr42 = value;
+                // Update the envelope function parameters.
+                self.is_incrementing = (value & 0x08) != 0;
+                self.initial_volume = value >> 4;
+                self.period = value & 0x07;
 
                 // Check DAC status. If top 5 bits are reset
                 // DAC will be disabled.
-                self.dac_enabled = ((self.nr42 >> 3) & 0b11111) != 0;
+                self.dac_enabled = (value & 0b1111_1000) != 0;
+
+                if !self.dac_enabled {
+                    self.channel_enabled = false;
+                }
             }
+
             0xFF22 => self.nr43 = value,
+
             0xFF23 => {
-                self.nr44 = value;
+                self.length_enabled = ((value >> 6) & 0x01) != 0;
+
+                // If length counter is zero reload it with 64.
+                if self.length_counter == 0 {
+                    self.length_counter = 64;
+                }
 
                 // Restart the channel iff DAC is enabled and trigger is set.
                 let trigger = (value >> 7) != 0;
 
                 if trigger && self.dac_enabled {
                     self.channel_enabled = true;
+                }
+
+                if trigger {
+                    // On trigger event all bits of LFSR are turned on.
+                    self.lfsr = 0x7FFF;
+
+                    // Envelope is triggered.
+                    self.period_timer = self.period;
+                    self.current_volume = self.initial_volume;
                 }
             }
 
@@ -775,7 +872,7 @@ impl Channel for ChannelFour {
         // If the frequency timer decrement to 0, it is reloaded with the formula
         // `divisor_code << clockshift` and wave position is advanced by one.
         if self.frequency_timer == 0 {
-            let divisor_code = (self.nr43 & 0x07) as u32;
+            let divisor_code = (self.nr43 & 0x07) as u16;
 
             self.frequency_timer = (if divisor_code == 0 {
                 8
@@ -798,17 +895,20 @@ impl Channel for ChannelFour {
 
     fn get_amplitude(&self) -> f32 {
         if self.dac_enabled && self.channel_enabled {
-            (!self.lfsr & 0b01) as f32
+            let input = (!self.lfsr & 0b01) as f32 * self.current_volume as f32;
+
+            (input / 7.5) - 1.0
         } else {
             0.0
         }
     }
 
     fn step_length(&mut self) {
-        if ((self.nr44 >> 6) & 0x01) != 0 && (self.nr41 & 0b111111) > 0 {
-            self.nr41 -= 1;
+        if self.length_enabled && self.length_counter > 0 {
+            self.length_counter -= 1;
 
-            if self.nr41 == 0 {
+            // The channel is disabled if the length counter is reset.
+            if self.length_counter == 0 {
                 self.channel_enabled = false;
             }
         }
