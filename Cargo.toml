@@ -14,8 +14,8 @@ license = "Apache-2.0"
 argentum-core = { path = "./argentum-core" }
 clap = "3.0.0-beta.2"
 env_logger = "0.8.3"
+fermium = "20014.4.1"
 gl33 = "0.2.1"
-glutin = "0.26.0"
 
 [profile.release]
 lto = "thin"

@@ -1,8 +1,8 @@
 //! Wrapper struct to conviniently abstract the inner workings.
 
-use crate::bus::Bus;
-use crate::cpu::Cpu;
-use crate::joypad::GbKey;
+use alloc::boxed::Box;
+
+use crate::{bus::Bus, cpu::Cpu, joypad::GbKey};
 
 /// T-cycles to execute per frame.
 const CYCLES_PER_FRAME: u32 = 70224;
@@ -14,9 +14,9 @@ pub struct GameBoy {
 
 impl GameBoy {
     /// Create a new `GameBoy` instance.
-    pub fn new(rom: &[u8]) -> Self {
+    pub fn new(rom: &[u8], callback: Box<dyn Fn(&[f32])>) -> Self {
         Self {
-            bus: Bus::new(rom),
+            bus: Bus::new(rom, callback),
             cpu: Cpu::new(),
         }
     }
@@ -36,7 +36,7 @@ impl GameBoy {
     }
 
     pub fn skip_bootrom(&mut self) {
-        log::info!("Skipping bootrom, and initializing...");
+        log::info!("Skipping bootrom, and running game ROM.");
 
         self.cpu.skip_bootrom();
         self.bus.skip_bootrom();

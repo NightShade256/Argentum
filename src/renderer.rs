@@ -177,9 +177,9 @@ impl Renderer {
         }
     }
 
-    pub fn set_viewport(&mut self, width: u32, height: u32) {
+    pub fn set_viewport(&mut self, width: i32, height: i32) {
         unsafe {
-            self.context.Viewport(0, 0, width as i32, height as i32);
+            self.context.Viewport(0, 0, width, height);
         }
     }
 }
