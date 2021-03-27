@@ -8,11 +8,12 @@ mod renderer;
 
 use renderer::Renderer;
 
+/// The version of this crate. To pass to Clap CLI.
 const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Clap)]
 #[clap(name = "Argentum GB")]
-#[clap(version = PKG_VERSION, about = "A simple Game Boy (DMG) emulator.")]
+#[clap(version = PKG_VERSION, about = "A Game Boy emulator written in Rust.")]
 struct Opt {
     /// The Game Boy ROM file to execute.
     #[clap(parse(from_os_str))]
@@ -106,6 +107,21 @@ pub fn main() {
         );
 
         let context = SDL_GL_CreateContext(window);
+
+        // Set the window icon.
+        let mut logo_bytes = include_bytes!("images/argentum_logo.rgb").to_vec();
+
+        let icon_surface = SDL_CreateRGBSurfaceWithFormatFrom(
+            logo_bytes.as_mut_ptr() as _,
+            128,
+            128,
+            24,
+            3 * 128,
+            SDL_PIXELFORMAT_RGB24.0,
+        );
+
+        SDL_SetWindowIcon(window, icon_surface);
+        SDL_FreeSurface(icon_surface);
 
         // Make the context, "current".
         SDL_GL_MakeCurrent(window, context);
