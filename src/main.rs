@@ -66,7 +66,7 @@ pub fn main() {
         let mut argentum = GameBoy::new(
             &rom,
             Box::new(|buffer| {
-                while SDL_GetQueuedAudioSize(SDL_AudioDeviceID(1)) > 1024 * 4 * 2 {
+                while SDL_GetQueuedAudioSize(SDL_AudioDeviceID(1)) > 1024 * 4 {
                     SDL_Delay(1);
                 }
 

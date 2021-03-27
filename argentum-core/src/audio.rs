@@ -132,6 +132,7 @@ impl Apu {
                         self.channel_two.step_length();
                         self.channel_three.step_length();
                         self.channel_four.step_length();
+                        self.channel_one.step_sweep();
                     }
 
                     4 => {
@@ -146,6 +147,7 @@ impl Apu {
                         self.channel_two.step_length();
                         self.channel_three.step_length();
                         self.channel_four.step_length();
+                        self.channel_one.step_sweep();
                     }
 
                     7 => {
@@ -296,8 +298,25 @@ pub struct ChannelOne {
     /// The position we are currently in the wave.
     wave_position: usize,
 
-    /// Controls the sweep functions for this channel.
-    nr10: u8,
+    /// Sweep Time, after this time a new frequency is calculated.
+    sweep_period: u8,
+
+    /// Is the sweep incrementing or decrementing in nature.
+    sweep_is_decrementing: bool,
+
+    /// The amount by which the frequency is changed.
+    sweep_amount: u8,
+
+    /// The amount of sweep steps the channels has recieved through the
+    /// FS.
+    sweep_period_timer: u8,
+
+    /// If the sweep function is enabled or not?
+    sweep_enabled: bool,
+
+    /// Stores the previous calculated frequency, depending upon some
+    /// condtions.
+    shadow_frequency: u16,
 
     /// The wave pattern duty currently in use.
     duty_pattern: u8,
@@ -354,12 +373,63 @@ impl ChannelOne {
             }
         }
     }
+
+    /// Steps the sweep function.
+    pub fn step_sweep(&mut self) {
+        if self.sweep_period_timer > 0 {
+            self.sweep_period_timer -= 1;
+        }
+
+        if self.sweep_period_timer == 0 {
+            self.sweep_period_timer = if self.sweep_period > 0 {
+                self.sweep_period
+            } else {
+                8
+            };
+
+            if self.sweep_enabled && self.sweep_period > 0 {
+                let new_frequency = self.calculate_frequency();
+
+                if new_frequency <= 2047 && self.sweep_amount > 0 {
+                    self.frequency = new_frequency;
+                    self.shadow_frequency = new_frequency;
+
+                    self.calculate_frequency();
+                }
+            }
+        }
+    }
+
+    /// Calculate the new frequency, and perform the overflow check.
+    fn calculate_frequency(&mut self) -> u16 {
+        let mut new_frequency = self.shadow_frequency >> self.sweep_amount;
+
+        new_frequency = if self.sweep_is_decrementing {
+            self.shadow_frequency - new_frequency
+        } else {
+            self.shadow_frequency + new_frequency
+        };
+
+        if new_frequency > 2047 {
+            self.channel_enabled = false;
+        }
+
+        new_frequency
+    }
 }
 
 impl Channel for ChannelOne {
     fn read_byte(&self, addr: u16) -> u8 {
         match addr {
-            0xFF10 => self.nr10,
+            0xFF10 => {
+                (self.sweep_period << 4)
+                    | (if self.sweep_is_decrementing {
+                        0x08
+                    } else {
+                        0x00
+                    })
+                    | self.sweep_period
+            }
 
             0xFF11 => (self.duty_pattern << 6) | 0b0011_1111,
 
@@ -379,7 +449,13 @@ impl Channel for ChannelOne {
 
     fn write_byte(&mut self, addr: u16, value: u8) {
         match addr {
-            0xFF10 => self.nr10 = value,
+            0xFF10 => {
+                // Update the sweep function parameters.
+                self.sweep_is_decrementing = (value & 0x08) != 0;
+                self.sweep_period = value >> 4;
+                self.sweep_amount = value & 0x07;
+            }
+
             0xFF11 => {
                 self.duty_pattern = (value >> 6) & 0b11;
 
@@ -427,6 +503,22 @@ impl Channel for ChannelOne {
                     // Trigger the envelope function.
                     self.period_timer = self.period;
                     self.current_volume = self.initial_volume;
+
+                    // Trigger the sweep function.
+                    self.shadow_frequency = self.frequency;
+
+                    // Sweep period of 0 is treated as 8 for some reason.
+                    self.sweep_period_timer = if self.sweep_period > 0 {
+                        self.sweep_period
+                    } else {
+                        8
+                    };
+
+                    self.sweep_enabled = self.sweep_period > 0 || self.sweep_amount > 0;
+
+                    if self.sweep_amount > 0 {
+                        self.calculate_frequency();
+                    }
                 }
             }
 
