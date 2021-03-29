@@ -22,6 +22,10 @@ struct Opt {
     /// Turn on basic logging support.
     #[clap(short, long)]
     logging: bool,
+
+    /// Skip the bootrom (Optix's custom bootrom Bootix).
+    #[clap(short, long)]
+    skip_bootrom: bool,
 }
 
 /// Handle keyboard input.
@@ -78,7 +82,9 @@ pub fn main() {
             }),
         );
 
-        argentum.skip_bootrom();
+        if opts.skip_bootrom {
+            argentum.skip_bootrom();
+        }
 
         // Initialize SDL's video and audio subsystems.
         if SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER) != 0 {

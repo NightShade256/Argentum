@@ -2,6 +2,10 @@ use alloc::boxed::Box;
 
 use crate::{audio::Apu, cartridge::*, joypad::Joypad, ppu::Ppu, timers::Timers};
 
+/// This is the custom copyright free bootrom for DMG
+/// made by Optix.
+const BOOT_ROM: &[u8] = include_bytes!("bootrom/bootix_dmg.bin");
+
 /// Implementation of the Game Boy memory bus.
 pub struct Bus {
     // The inserted cartridge.
@@ -33,6 +37,9 @@ pub struct Bus {
 
     /// $FFFF - IE register. (Set bits here to enable interrupts).
     pub ie_reg: u8,
+
+    /// $FF50 - BOOT register. Set to non-zero value to un-map bootrom.
+    pub boot_reg: u8,
 }
 
 impl Bus {
@@ -72,6 +79,7 @@ impl Bus {
             joypad: Joypad::new(),
             ie_reg: 0,
             if_reg: 0,
+            boot_reg: 0,
         }
     }
 
@@ -79,6 +87,9 @@ impl Bus {
     /// Tick the components if specified.
     pub fn read_byte(&mut self, addr: u16, tick: bool) -> u8 {
         let value = match addr {
+            // First 256 bytes map to bootrom.
+            0x0000..=0x00FF if self.boot_reg == 0 => BOOT_ROM[addr as usize],
+
             // ROM Banks.
             0x0000..=0x7FFF => self.cartridge.read_byte(addr),
 
@@ -118,6 +129,14 @@ impl Bus {
             // DMA transfer request.
             0xFF46 => 0xFF,
 
+            0xFF50 => {
+                if self.boot_reg != 0 {
+                    0xFF
+                } else {
+                    0x00
+                }
+            }
+
             // High RAM.
             0xFF80..=0xFFFE => self.high_ram[(addr - 0xFF80) as usize],
 
@@ -138,6 +157,9 @@ impl Bus {
     /// Tick the components if specified.
     pub fn write_byte(&mut self, addr: u16, value: u8, tick: bool) {
         match addr {
+            // First 256 bytes map to bootrom.
+            0x0000..=0x00FF if self.boot_reg == 0 => {}
+
             // ROM Banks.
             0x0000..=0x7FFF => self.cartridge.write_byte(addr, value),
 
@@ -185,6 +207,12 @@ impl Bus {
                 }
             }
 
+            0xFF50 => {
+                if self.boot_reg == 0 {
+                    self.boot_reg = value;
+                }
+            }
+
             // High RAM.
             0xFF80..=0xFFFE => self.high_ram[(addr - 0xFF80) as usize] = value,
 
@@ -205,6 +233,8 @@ impl Bus {
         self.write_byte(0xFF47, 0xFC, false);
         self.write_byte(0xFF48, 0xFF, false);
         self.write_byte(0xFF49, 0xFF, false);
+
+        self.boot_reg = 1;
     }
 
     /// Tick the components on the Bus.
