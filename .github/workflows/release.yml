@@ -16,7 +16,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: beta
+          toolchain: stable
           default: true
       - name: Build Binary
         run: cargo build --release
@@ -40,7 +40,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: beta
+          toolchain: stable
           default: true
       - name: Build Binary
         run: cargo build --release
@@ -61,13 +61,13 @@ jobs:
         uses: actions/download-artifact@v2
       - name: Rename Artifacts
         run: |
-          mv ./windows-artifact/argentum-gb.exe ./argentum-gb-win.exe
-          mv ./linux-artifact/argentum-gb ./argentum-gb-gnu.run
+          mv ./windows-artifact/argentum-gb.exe ./argentum-gb.exe
+          mv ./linux-artifact/argentum-gb ./argentum-gb.run
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            argentum-gb-win.exe
-            argentum-gb-gnu.run
+            argentum-gb.exe
+            argentum-gb.run
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
