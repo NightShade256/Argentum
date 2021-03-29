@@ -2,7 +2,7 @@ use alloc::boxed::Box;
 
 /// The rate at which samples are consumed by the audio
 /// driver.
-pub const SAMPLE_RATE: usize = 48000;
+pub const SAMPLE_RATE: usize = 65536;
 
 /// The size of the audio sample buffer.
 pub const BUFFER_SIZE: usize = 1024;
@@ -46,7 +46,7 @@ pub struct Apu {
     nr51: u8,
 
     /// APU enabled - Controls whether the APU is ticking.
-    enabled: bool,
+    apu_enabled: bool,
 
     /// Implementation of the square wave channel one with envelope and sweep function.
     channel_one: ChannelOne,
@@ -77,6 +77,12 @@ pub struct Apu {
 
     /// The position the FS is currently in.
     frame_sequencer_position: u8,
+
+    /// Stub
+    left_vin: bool,
+
+    /// Stub
+    right_vin: bool,
 }
 
 impl Apu {
@@ -86,7 +92,7 @@ impl Apu {
             left_volume: 0,
             right_volume: 0,
             nr51: 0,
-            enabled: false,
+            apu_enabled: false,
             channel_one: ChannelOne::default(),
             channel_two: ChannelTwo::default(),
             channel_three: ChannelThree::default(),
@@ -97,6 +103,8 @@ impl Apu {
             is_buffer_full: false,
             callback,
             frame_sequencer_position: 0,
+            left_vin: false,
+            right_vin: false,
         }
     }
 
@@ -220,10 +228,17 @@ impl Apu {
     pub fn read_byte(&self, addr: u16) -> u8 {
         match addr {
             // NR50 - Controls volume for the stereo channels.
-            0xFF24 => (self.left_volume << 4) | self.right_volume,
+            0xFF24 => {
+                (if self.left_vin { 0b1000_0000 } else { 0 })
+                    | (self.left_volume << 4)
+                    | (if self.right_vin { 0b0000_1000 } else { 0 })
+                    | self.right_volume
+            }
+
             0xFF25 => self.nr51,
+
             0xFF26 => {
-                let mut nr52 = (self.enabled as u8) << 7;
+                let mut nr52 = ((self.apu_enabled as u8) << 7) | 0x70;
 
                 // Set the status bits appropriately.
                 nr52 |= self.channel_one.channel_enabled as u8;
@@ -252,14 +267,49 @@ impl Apu {
 
     /// Write a byte to the given address.
     pub fn write_byte(&mut self, addr: u16, value: u8) {
+        if !(self.apu_enabled
+            || addr == 0xFF26
+            || (0xFF30..=0xFF3F).contains(&addr)
+            || [0xFF11, 0xFF16, 0xFF1B, 0xFF20].contains(&addr))
+        {
+            return;
+        }
+
+        let value = if !self.apu_enabled && [0xFF11, 0xFF16, 0xFF20].contains(&addr) {
+            value & 0b0011_1111
+        } else {
+            value
+        };
+
         match addr {
             0xFF24 => {
                 self.left_volume = (value >> 4) & 0x07;
                 self.right_volume = value & 0x07;
+
+                self.left_vin = (value & 0b1000_0000) != 0;
+                self.right_vin = (value & 0b0000_1000) != 0;
             }
+
             0xFF25 => self.nr51 = value,
+
             0xFF26 => {
-                self.enabled = (value >> 7) != 0;
+                let enabled = (value >> 7) != 0;
+
+                if !enabled && self.apu_enabled {
+                    for addr in 0xFF10..=0xFF25 {
+                        self.write_byte(addr, 0x00);
+                    }
+
+                    self.apu_enabled = false;
+                } else if enabled && !self.apu_enabled {
+                    self.apu_enabled = true;
+
+                    self.frame_sequencer_position = 0;
+
+                    self.channel_one.wave_position = 0;
+                    self.channel_two.wave_position = 0;
+                    self.channel_three.wave_position = 0;
+                }
             }
 
             // Channel 1 IO registers.
@@ -307,7 +357,7 @@ pub struct ChannelOne {
     /// The amount by which the frequency is changed.
     sweep_amount: u8,
 
-    /// The amount of sweep steps the channels has recieved through the
+    /// The amount of sweep steps the channels has received through the
     /// FS.
     sweep_period_timer: u8,
 
@@ -315,7 +365,7 @@ pub struct ChannelOne {
     sweep_enabled: bool,
 
     /// Stores the previous calculated frequency, depending upon some
-    /// condtions.
+    /// conditions.
     shadow_frequency: u16,
 
     /// The wave pattern duty currently in use.
@@ -342,7 +392,7 @@ pub struct ChannelOne {
     /// change.
     period: u8,
 
-    /// The amount of volume steps the channels has recieved through the
+    /// The amount of volume steps the channels has received through the
     /// FS.
     period_timer: u8,
 
@@ -428,7 +478,8 @@ impl Channel for ChannelOne {
                     } else {
                         0x00
                     })
-                    | self.sweep_period
+                    | self.sweep_amount
+                    | 0x80
             }
 
             0xFF11 => (self.duty_pattern << 6) | 0b0011_1111,
@@ -609,7 +660,7 @@ pub struct ChannelTwo {
     /// change.
     period: u8,
 
-    /// The amount of volume steps the channels has recieved through the
+    /// The amount of volume steps the channels has received through the
     /// FS.
     period_timer: u8,
 
@@ -961,7 +1012,7 @@ pub struct ChannelFour {
     /// change.
     period: u8,
 
-    /// The amount of volume steps the channels has recieved through the
+    /// The amount of volume steps the channels has received through the
     /// FS.
     period_timer: u8,
 
@@ -1073,7 +1124,7 @@ impl Channel for ChannelFour {
 
     fn tick_channel(&mut self) {
         // If the frequency timer decrement to 0, it is reloaded with the formula
-        // `divisor_code << clockshift` and wave position is advanced by one.
+        // `divisor_code << clock_shift` and wave position is advanced by one.
         if self.frequency_timer == 0 {
             let divisor_code = (self.nr43 & 0x07) as u16;
 
