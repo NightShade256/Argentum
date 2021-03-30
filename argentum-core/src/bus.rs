@@ -12,7 +12,7 @@ pub struct Bus {
     pub cartridge: Box<dyn Cartridge>,
 
     // 8 KB of Work RAM.
-    pub work_ram: Box<[u8; 0x2000]>,
+    pub work_ram: Box<[u8; 0x8000]>,
 
     // High RAM.
     pub high_ram: Box<[u8; 0x7F]>,
@@ -43,6 +43,9 @@ pub struct Bus {
 
     /// Is CGB mode enabled or not.
     pub cgb_mode: bool,
+
+    /// SVBK - WRAM Bank.
+    pub wram_bank: usize,
 }
 
 impl Bus {
@@ -77,7 +80,7 @@ impl Bus {
 
         Self {
             cartridge,
-            work_ram: Box::new([0; 0x2000]),
+            work_ram: Box::new([0; 0x8000]),
             high_ram: Box::new([0; 0x7F]),
             timers: Timers::new(),
             ppu: Ppu::new(cgb_mode),
@@ -87,6 +90,7 @@ impl Bus {
             if_reg: 0,
             boot_reg: 0,
             cgb_mode,
+            wram_bank: 1,
         }
     }
 
@@ -107,7 +111,16 @@ impl Bus {
             0xA000..=0xBFFF => self.cartridge.read_byte(addr),
 
             // Work RAM.
-            0xC000..=0xDFFF => self.work_ram[(addr - 0xC000) as usize],
+            0xC000..=0xCFFF => self.work_ram[(addr - 0xC000) as usize],
+
+            // Work RAM Bank 1~7
+            0xD000..=0xDFFF => {
+                if self.cgb_mode {
+                    self.work_ram[(addr - 0xD000) as usize + (0x1000 * self.wram_bank)]
+                } else {
+                    self.work_ram[(addr - 0xC000) as usize]
+                }
+            }
 
             // Echo RAM.
             0xE000..=0xFDFF => self.work_ram[(addr - 0xE000) as usize],
@@ -146,6 +159,8 @@ impl Bus {
                 }
             }
 
+            0xFF70 if self.cgb_mode => self.wram_bank as u8,
+
             // High RAM.
             0xFF80..=0xFFFE => self.high_ram[(addr - 0xFF80) as usize],
 
@@ -179,7 +194,16 @@ impl Bus {
             0xA000..=0xBFFF => self.cartridge.write_byte(addr, value),
 
             // Work RAM.
-            0xC000..=0xDFFF => self.work_ram[(addr - 0xC000) as usize] = value,
+            0xC000..=0xCFFF => self.work_ram[(addr - 0xC000) as usize] = value,
+
+            // Work RAM Bank 1~7
+            0xD000..=0xDFFF => {
+                if self.cgb_mode {
+                    self.work_ram[(addr - 0xD000) as usize + (0x1000 * self.wram_bank)] = value;
+                } else {
+                    self.work_ram[(addr - 0xC000) as usize] = value;
+                }
+            }
 
             // Echo RAM.
             0xE000..=0xFDFF => self.work_ram[(addr - 0xE000) as usize] = value,
@@ -222,6 +246,12 @@ impl Bus {
                 if self.boot_reg == 0 {
                     self.boot_reg = value;
                 }
+            }
+
+            0xFF70 if self.cgb_mode => {
+                let bank = (value & 0b111) as usize;
+
+                self.wram_bank = if bank == 0 { 1 } else { bank }
             }
 
             // High RAM.
