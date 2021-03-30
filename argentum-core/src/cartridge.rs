@@ -16,6 +16,14 @@ pub trait Cartridge {
 
     /// Write a byte to the given address.
     fn write_byte(&mut self, addr: u16, value: u8);
+
+    /// Detects whether the game is a CGB game.
+    fn has_cgb_support(&self) -> bool {
+        let cgb_flag_byte = self.read_byte(0x0143);
+
+        // A game supports CGB functions if the upper bit is set.
+        (cgb_flag_byte & 0x80) != 0
+    }
 }
 
 /// Cartridge with just two ROM banks.
@@ -33,7 +41,11 @@ impl RomOnly {
 
 impl Cartridge for RomOnly {
     fn game_title(&self) -> String {
-        String::from_utf8_lossy(&self.rom[0x134..0x0143]).into()
+        if self.has_cgb_support() {
+            String::from_utf8_lossy(&self.rom[0x134..=0x013E]).into()
+        } else {
+            String::from_utf8_lossy(&self.rom[0x134..=0x0143]).into()
+        }
     }
 
     fn read_byte(&self, addr: u16) -> u8 {
@@ -93,7 +105,11 @@ impl Mbc1 {
 
 impl Cartridge for Mbc1 {
     fn game_title(&self) -> String {
-        String::from_utf8_lossy(&self.rom[0x134..0x0143]).into()
+        if self.has_cgb_support() {
+            String::from_utf8_lossy(&self.rom[0x134..=0x013E]).into()
+        } else {
+            String::from_utf8_lossy(&self.rom[0x134..=0x0143]).into()
+        }
     }
 
     fn read_byte(&self, addr: u16) -> u8 {
@@ -219,7 +235,11 @@ impl Mbc3 {
 
 impl Cartridge for Mbc3 {
     fn game_title(&self) -> String {
-        String::from_utf8_lossy(&self.rom[0x134..0x0143]).into()
+        if self.has_cgb_support() {
+            String::from_utf8_lossy(&self.rom[0x134..=0x013E]).into()
+        } else {
+            String::from_utf8_lossy(&self.rom[0x134..=0x0143]).into()
+        }
     }
 
     fn read_byte(&self, addr: u16) -> u8 {
@@ -325,7 +345,11 @@ impl Mbc5 {
 
 impl Cartridge for Mbc5 {
     fn game_title(&self) -> String {
-        String::from_utf8_lossy(&self.rom[0x134..0x0143]).into()
+        if self.has_cgb_support() {
+            String::from_utf8_lossy(&self.rom[0x134..=0x013E]).into()
+        } else {
+            String::from_utf8_lossy(&self.rom[0x134..=0x0143]).into()
+        }
     }
 
     fn read_byte(&self, addr: u16) -> u8 {
