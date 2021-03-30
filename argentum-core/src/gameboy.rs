@@ -38,7 +38,7 @@ impl GameBoy {
     pub fn skip_bootrom(&mut self) {
         log::info!("Skipping bootrom, and running game ROM.");
 
-        self.cpu.skip_bootrom();
+        self.cpu.skip_bootrom(self.bus.cgb_mode);
         self.bus.skip_bootrom();
     }
 

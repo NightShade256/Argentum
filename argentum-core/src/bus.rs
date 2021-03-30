@@ -40,12 +40,15 @@ pub struct Bus {
 
     /// $FF50 - BOOT register. Set to non-zero value to un-map bootrom.
     pub boot_reg: u8,
+
+    /// Is CGB mode enabled or not.
+    pub cgb_mode: bool,
 }
 
 impl Bus {
     /// Create a new `Bus` instance.
     pub fn new(rom: &[u8], callback: Box<dyn Fn(&[f32])>) -> Self {
-        log::info!("ROM Information...");
+        log::info!("ROM Information:");
 
         let cartridge: Box<dyn Cartridge> = match rom[0x0147] {
             0x00 => {
@@ -67,19 +70,23 @@ impl Bus {
             _ => panic!("ROM ONLY + MBC(1/3/5) cartridges are all that is currently supported."),
         };
 
-        log::info!("Title: {}", cartridge.game_title());
+        let cgb_mode = cartridge.has_cgb_support();
+
+        log::info!("ROM Title: {}", cartridge.game_title());
+        log::info!("CGB Mode: {}", cgb_mode);
 
         Self {
             cartridge,
             work_ram: Box::new([0; 0x2000]),
             high_ram: Box::new([0; 0x7F]),
             timers: Timers::new(),
-            ppu: Ppu::new(),
+            ppu: Ppu::new(cgb_mode),
             apu: Apu::new(callback),
             joypad: Joypad::new(),
             ie_reg: 0,
             if_reg: 0,
             boot_reg: 0,
+            cgb_mode,
         }
     }
 
@@ -124,7 +131,9 @@ impl Bus {
             0xFF10..=0xFF26 | 0xFF30..=0xFF3F => self.apu.read_byte(addr),
 
             // PPU's IO registers.
-            0xFF40..=0xFF45 | 0xFF47..=0xFF4B => self.ppu.read_byte(addr),
+            0xFF40..=0xFF45 | 0xFF47..=0xFF4B | 0xFF4F | 0xFF68 | 0xFF69 => {
+                self.ppu.read_byte(addr)
+            }
 
             // DMA transfer request.
             0xFF46 => 0xFF,
@@ -194,7 +203,9 @@ impl Bus {
             0xFF10..=0xFF26 | 0xFF30..=0xFF3F => self.apu.write_byte(addr, value),
 
             // PPU's IO registers.
-            0xFF40..=0xFF45 | 0xFF47..=0xFF4B => self.ppu.write_byte(addr, value),
+            0xFF40..=0xFF45 | 0xFF47..=0xFF4B | 0xFF4F | 0xFF68 | 0xFF69 => {
+                self.ppu.write_byte(addr, value);
+            }
 
             // DMA transfer request.
             0xFF46 => {

@@ -197,11 +197,18 @@ impl Cpu {
 
     /// Skips the bootrom, and initializes default values for
     /// registers.
-    pub fn skip_bootrom(&mut self) {
-        self.reg.set_af(0x01B0);
-        self.reg.set_bc(0x0013);
-        self.reg.set_de(0x00D8);
-        self.reg.set_hl(0x014D);
+    pub fn skip_bootrom(&mut self, cgb: bool) {
+        if cgb {
+            self.reg.set_af(0x1180);
+            self.reg.set_bc(0x0000);
+            self.reg.set_de(0xFF56);
+            self.reg.set_hl(0x000D);
+        } else {
+            self.reg.set_af(0x01B0);
+            self.reg.set_bc(0x0013);
+            self.reg.set_de(0x00D8);
+            self.reg.set_hl(0x014D);
+        }
 
         self.reg.sp = 0xFFFE;
         self.reg.pc = 0x0100;
