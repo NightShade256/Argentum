@@ -73,6 +73,9 @@ pub struct Bus {
 
     /// The HDMA destination where to transfer the next byte.
     pub hdma_dst: u16,
+
+    /// $FF4D - KEY1.
+    pub speed_reg: u8,
 }
 
 impl Bus {
@@ -127,6 +130,7 @@ impl Bus {
             hdma_len: 0,
             hdma_dst: 0,
             hdma_src: 0,
+            speed_reg: 0,
         }
     }
 
@@ -186,6 +190,8 @@ impl Bus {
 
             // DMA transfer request.
             0xFF46 => 0xFF,
+
+            0xFF4D => self.speed_reg,
 
             0xFF50 => {
                 if self.boot_reg != 0 {
@@ -282,6 +288,8 @@ impl Bus {
                 }
             }
 
+            0xFF4D => self.speed_reg = value & 0b0000_0001,
+
             // BOOT register.
             0xFF50 => {
                 if self.boot_reg == 0 {
@@ -377,13 +385,21 @@ impl Bus {
         self.boot_reg = 1;
     }
 
+    /// Check if we are in double speed mode.
+    pub fn is_double_speed(&self) -> bool {
+        (self.speed_reg & 0b1000_0000) != 0
+    }
+
     /// Tick the components on the Bus.
     pub fn tick(&mut self) {
+        let cycles = 4 >> (self.is_double_speed() as u8);
+
         self.timers.tick(&mut self.if_reg);
         self.joypad.tick(&mut self.if_reg);
-        self.apu.tick();
 
-        let entered_hblank = self.ppu.tick(&mut self.if_reg);
+        self.apu.tick(cycles);
+
+        let entered_hblank = self.ppu.tick(&mut self.if_reg, cycles);
 
         // If we entered HBlank and HDMA is active perform
         // a transfer of 0x10 bytes.

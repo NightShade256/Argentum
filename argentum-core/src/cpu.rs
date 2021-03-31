@@ -32,6 +32,9 @@ pub struct Cpu {
     /// The amount of cycles spent executing the current
     /// instruction.
     pub cycles: u32,
+
+    /// Are we currently in double speed mode?
+    pub is_double_speed: bool,
 }
 
 // Formatting similar to Peach's (wheremyfoodat) logs.
@@ -63,6 +66,7 @@ impl Cpu {
             ime: false,
             state: CpuState::Running,
             cycles: 0,
+            is_double_speed: false,
         }
     }
 
@@ -286,6 +290,6 @@ impl Cpu {
             self.decode_and_execute(bus, opcode);
         }
 
-        self.cycles
+        self.cycles >> (self.is_double_speed as u8)
     }
 }

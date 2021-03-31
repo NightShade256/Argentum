@@ -372,12 +372,12 @@ impl Ppu {
 
     /// Tick the PPU by 1 M cycle, and return a bool
     /// that tells if we have entered HBlank.
-    pub fn tick(&mut self, if_reg: &mut u8) -> bool {
+    pub fn tick(&mut self, if_reg: &mut u8, cycles: u32) -> bool {
         if !self.lcdc.contains(Lcdc::LCD_ENABLE) {
             return false;
         }
 
-        self.total_cycles += 4;
+        self.total_cycles += cycles;
 
         let mut entered_hblank = false;
 

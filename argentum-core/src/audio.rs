@@ -109,8 +109,8 @@ impl Apu {
     }
 
     /// Tick the APU by 1 M-cycle.
-    pub fn tick(&mut self) {
-        for _ in 0..4 {
+    pub fn tick(&mut self, cycles: u32) {
+        for _ in 0..cycles {
             // This clock is incremented every T-cycle.
             // This is used to clock the frame sequencer and
             // to generate samples.
