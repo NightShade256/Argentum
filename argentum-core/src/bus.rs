@@ -12,7 +12,7 @@ pub struct Bus {
     pub cartridge: Box<dyn Cartridge>,
 
     // 8 KB of Work RAM.
-    pub work_ram: Box<[u8; 0x2000]>,
+    pub work_ram: Box<[u8; 0x8000]>,
 
     // High RAM.
     pub high_ram: Box<[u8; 0x7F]>,
@@ -40,12 +40,48 @@ pub struct Bus {
 
     /// $FF50 - BOOT register. Set to non-zero value to un-map bootrom.
     pub boot_reg: u8,
+
+    /// Is CGB mode enabled or not.
+    pub cgb_mode: bool,
+
+    /// SVBK - WRAM Bank.
+    pub wram_bank: usize,
+
+    /// $FF51 - HDMA1
+    pub dma_src_high: u8,
+
+    /// $FF52 - HDMA2
+    pub dma_src_low: u8,
+
+    /// $FF53 - HDMA3
+    pub dma_dst_high: u8,
+
+    /// $FF54 - HDMA4
+    pub dma_dst_low: u8,
+
+    /// $FF55 - HDMA5
+    pub dma_control: u8,
+
+    /// Signals whether HDMA is currently active.
+    pub hdma_active: bool,
+
+    /// The remaining length of the HDMA transfer.
+    pub hdma_len: u16,
+
+    /// The HDMA sourcefrom where to read the next byte.
+    pub hdma_src: u16,
+
+    /// The HDMA destination where to transfer the next byte.
+    pub hdma_dst: u16,
+
+    /// $FF4D - KEY1.
+    pub speed_reg: u8,
 }
 
 impl Bus {
     /// Create a new `Bus` instance.
     pub fn new(rom: &[u8], callback: Box<dyn Fn(&[f32])>) -> Self {
-        log::info!("ROM Information...");
+        log::info!("ROM Information:");
 
         let cartridge: Box<dyn Cartridge> = match rom[0x0147] {
             0x00 => {
@@ -67,19 +103,34 @@ impl Bus {
             _ => panic!("ROM ONLY + MBC(1/3/5) cartridges are all that is currently supported."),
         };
 
-        log::info!("Title: {}", cartridge.game_title());
+        let cgb_mode = cartridge.has_cgb_support();
+
+        log::info!("ROM Title: {}", cartridge.game_title());
+        log::info!("CGB Mode: {}", cgb_mode);
 
         Self {
             cartridge,
-            work_ram: Box::new([0; 0x2000]),
+            work_ram: Box::new([0; 0x8000]),
             high_ram: Box::new([0; 0x7F]),
             timers: Timers::new(),
-            ppu: Ppu::new(),
+            ppu: Ppu::new(cgb_mode),
             apu: Apu::new(callback),
             joypad: Joypad::new(),
             ie_reg: 0,
             if_reg: 0,
             boot_reg: 0,
+            cgb_mode,
+            wram_bank: 1,
+            dma_src_high: 0,
+            dma_src_low: 0,
+            dma_dst_high: 0,
+            dma_dst_low: 0,
+            dma_control: 0,
+            hdma_active: false,
+            hdma_len: 0,
+            hdma_dst: 0,
+            hdma_src: 0,
+            speed_reg: 0,
         }
     }
 
@@ -100,7 +151,16 @@ impl Bus {
             0xA000..=0xBFFF => self.cartridge.read_byte(addr),
 
             // Work RAM.
-            0xC000..=0xDFFF => self.work_ram[(addr - 0xC000) as usize],
+            0xC000..=0xCFFF => self.work_ram[(addr - 0xC000) as usize],
+
+            // Work RAM Bank 1~7
+            0xD000..=0xDFFF => {
+                if self.cgb_mode {
+                    self.work_ram[(addr - 0xD000) as usize + (0x1000 * self.wram_bank)]
+                } else {
+                    self.work_ram[(addr - 0xC000) as usize]
+                }
+            }
 
             // Echo RAM.
             0xE000..=0xFDFF => self.work_ram[(addr - 0xE000) as usize],
@@ -124,10 +184,14 @@ impl Bus {
             0xFF10..=0xFF26 | 0xFF30..=0xFF3F => self.apu.read_byte(addr),
 
             // PPU's IO registers.
-            0xFF40..=0xFF45 | 0xFF47..=0xFF4B => self.ppu.read_byte(addr),
+            0xFF40..=0xFF45 | 0xFF47..=0xFF4B | 0xFF4F | 0xFF68 | 0xFF69..=0xFF6C => {
+                self.ppu.read_byte(addr)
+            }
 
             // DMA transfer request.
             0xFF46 => 0xFF,
+
+            0xFF4D => self.speed_reg,
 
             0xFF50 => {
                 if self.boot_reg != 0 {
@@ -136,6 +200,12 @@ impl Bus {
                     0x00
                 }
             }
+
+            // HDMA5.
+            0xFF55 if self.cgb_mode => self.dma_control,
+
+            // SVBK.
+            0xFF70 if self.cgb_mode => self.wram_bank as u8,
 
             // High RAM.
             0xFF80..=0xFFFE => self.high_ram[(addr - 0xFF80) as usize],
@@ -170,7 +240,16 @@ impl Bus {
             0xA000..=0xBFFF => self.cartridge.write_byte(addr, value),
 
             // Work RAM.
-            0xC000..=0xDFFF => self.work_ram[(addr - 0xC000) as usize] = value,
+            0xC000..=0xCFFF => self.work_ram[(addr - 0xC000) as usize] = value,
+
+            // Work RAM Bank 1~7
+            0xD000..=0xDFFF => {
+                if self.cgb_mode {
+                    self.work_ram[(addr - 0xD000) as usize + (0x1000 * self.wram_bank)] = value;
+                } else {
+                    self.work_ram[(addr - 0xC000) as usize] = value;
+                }
+            }
 
             // Echo RAM.
             0xE000..=0xFDFF => self.work_ram[(addr - 0xE000) as usize] = value,
@@ -194,7 +273,9 @@ impl Bus {
             0xFF10..=0xFF26 | 0xFF30..=0xFF3F => self.apu.write_byte(addr, value),
 
             // PPU's IO registers.
-            0xFF40..=0xFF45 | 0xFF47..=0xFF4B => self.ppu.write_byte(addr, value),
+            0xFF40..=0xFF45 | 0xFF47..=0xFF4B | 0xFF4F | 0xFF68 | 0xFF69..=0xFF6C => {
+                self.ppu.write_byte(addr, value);
+            }
 
             // DMA transfer request.
             0xFF46 => {
@@ -207,10 +288,77 @@ impl Bus {
                 }
             }
 
+            0xFF4D => self.speed_reg = value & 0b0000_0001,
+
+            // BOOT register.
             0xFF50 => {
                 if self.boot_reg == 0 {
                     self.boot_reg = value;
                 }
+            }
+
+            // HDMA1
+            0xFF51 if self.cgb_mode => {
+                self.dma_src_high = value;
+            }
+
+            // HDMA2
+            0xFF52 if self.cgb_mode => {
+                self.dma_src_low = value;
+            }
+
+            // HDMA3
+            0xFF53 if self.cgb_mode => {
+                self.dma_dst_high = value;
+            }
+
+            // HDMA4
+            0xFF54 if self.cgb_mode => {
+                self.dma_dst_low = value;
+            }
+
+            // HDMA5
+            0xFF55 if self.cgb_mode => {
+                // The length of the DMA.
+                let len = (((value & 0x7F) as u16) + 1) << 4;
+
+                // Source and destination addresses of the DMA.
+                let src = ((self.dma_src_high as u16) << 8) | ((self.dma_src_low & 0xF0) as u16);
+                let dst = ((self.dma_dst_high as u16) << 8) | ((self.dma_dst_low & 0xF0) as u16);
+
+                // Check if the DMA is a GDMA or a HDMA.
+                if (value & 0x80) != 0 {
+                    self.dma_control = value;
+
+                    self.hdma_len = len;
+                    self.hdma_dst = dst;
+                    self.hdma_src = src;
+                    self.hdma_active = true;
+                } else {
+                    // If HDMA was activated earlier and top bit is 0 it means
+                    // instead of GDMA the ROM wants to cancel the earlier DMA.
+                    if self.hdma_active {
+                        self.hdma_active = false;
+                        self.dma_control = 0xFF;
+                        return;
+                    }
+
+                    // We copy all the bytes instantly and not worry about
+                    // timings currently.
+                    for i in 0..len {
+                        let value = self.read_byte(src + i, false);
+
+                        self.write_byte(dst + i, value, false);
+                    }
+
+                    self.dma_control = 0xFF;
+                }
+            }
+
+            0xFF70 if self.cgb_mode => {
+                let bank = (value & 0b111) as usize;
+
+                self.wram_bank = if bank == 0 { 1 } else { bank }
             }
 
             // High RAM.
@@ -237,11 +385,44 @@ impl Bus {
         self.boot_reg = 1;
     }
 
+    /// Check if we are in double speed mode.
+    pub fn is_double_speed(&self) -> bool {
+        (self.speed_reg & 0b1000_0000) != 0
+    }
+
     /// Tick the components on the Bus.
     pub fn tick(&mut self) {
+        let cycles = 4 >> (self.is_double_speed() as u8);
+
         self.timers.tick(&mut self.if_reg);
         self.joypad.tick(&mut self.if_reg);
-        self.ppu.tick(&mut self.if_reg);
-        self.apu.tick();
+
+        self.apu.tick(cycles);
+
+        let entered_hblank = self.ppu.tick(&mut self.if_reg, cycles);
+
+        // If we entered HBlank and HDMA is active perform
+        // a transfer of 0x10 bytes.
+        if entered_hblank && self.hdma_active {
+            for i in 0..0x10 {
+                let byte = self.read_byte(self.hdma_src + i, false);
+
+                // The destination is always in VRAM.
+                self.ppu
+                    .write_byte(((self.hdma_dst + i) & 0x1FFF) + 0x8000, byte);
+            }
+
+            self.hdma_len -= 0x10;
+            self.hdma_src += 0x10;
+            self.hdma_dst += 0x10;
+
+            self.dma_control -= 1;
+
+            // Switch off HDMA if all bytes are transferred.
+            if self.hdma_len == 0 {
+                self.dma_control = 0xFF;
+                self.hdma_active = false;
+            }
+        }
     }
 }

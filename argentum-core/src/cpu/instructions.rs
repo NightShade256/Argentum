@@ -35,7 +35,28 @@ impl Cpu {
     }
 
     /// STOP.
-    pub fn stop(&mut self) {
+    pub fn stop(&mut self, bus: &mut Bus) {
+        if bus.cgb_mode && (bus.speed_reg & 0x01) != 0 {
+            if self.is_double_speed {
+                self.is_double_speed = false;
+
+                bus.speed_reg = 0b0111_1110;
+            } else {
+                self.is_double_speed = true;
+
+                bus.speed_reg = 0b1111_1110;
+            }
+
+            log::info!(
+                "Performed speed switch to {}.",
+                if self.is_double_speed {
+                    "double speed"
+                } else {
+                    "normal speed"
+                }
+            );
+        }
+
         self.reg.pc += 1;
     }
 

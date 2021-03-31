@@ -11,7 +11,7 @@ impl Cpu {
 
             0x08 => self.ld_u16_sp(bus),
 
-            0x10 => self.stop(),
+            0x10 => self.stop(bus),
 
             0x18 => self.unconditional_jr(bus),
 

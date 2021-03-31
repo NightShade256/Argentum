@@ -15,10 +15,17 @@ pub struct GameBoy {
 impl GameBoy {
     /// Create a new `GameBoy` instance.
     pub fn new(rom: &[u8], callback: Box<dyn Fn(&[f32])>) -> Self {
-        Self {
+        let mut gameboy = Self {
             bus: Bus::new(rom, callback),
             cpu: Cpu::new(),
+        };
+
+        if gameboy.bus.cgb_mode {
+            gameboy.cpu.skip_bootrom(gameboy.bus.cgb_mode);
+            gameboy.bus.skip_bootrom();
         }
+
+        gameboy
     }
 
     /// Execute a frame's worth of instructions.
@@ -36,9 +43,13 @@ impl GameBoy {
     }
 
     pub fn skip_bootrom(&mut self) {
+        if self.bus.cgb_mode {
+            return;
+        }
+
         log::info!("Skipping bootrom, and running game ROM.");
 
-        self.cpu.skip_bootrom();
+        self.cpu.skip_bootrom(self.bus.cgb_mode);
         self.bus.skip_bootrom();
     }
 
