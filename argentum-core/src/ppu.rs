@@ -370,13 +370,16 @@ impl Ppu {
         self.render_sprites();
     }
 
-    /// Tick the PPU by 1 M cycle.
-    pub fn tick(&mut self, if_reg: &mut u8) {
+    /// Tick the PPU by 1 M cycle, and return a bool
+    /// that tells if we have entered HBlank.
+    pub fn tick(&mut self, if_reg: &mut u8) -> bool {
         if !self.lcdc.contains(Lcdc::LCD_ENABLE) {
-            return;
+            return false;
         }
 
         self.total_cycles += 4;
+
+        let mut entered_hblank = false;
 
         // The actual PPU timings are not fixed.
         // They vary depending upon the number of sprites
@@ -390,6 +393,10 @@ impl Ppu {
             PpuModes::Drawing if self.total_cycles >= 172 => {
                 self.total_cycles -= 172;
                 self.change_mode(PpuModes::HBlank, if_reg);
+
+                if self.cgb_mode {
+                    entered_hblank = true;
+                }
             }
 
             PpuModes::HBlank if self.total_cycles >= 204 => {
@@ -426,6 +433,8 @@ impl Ppu {
 
             _ => {}
         }
+
+        entered_hblank
     }
 
     /// Draw a pixel in the framebuffer at the given `x` and `y`

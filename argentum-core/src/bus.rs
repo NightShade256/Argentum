@@ -46,6 +46,33 @@ pub struct Bus {
 
     /// SVBK - WRAM Bank.
     pub wram_bank: usize,
+
+    /// $FF51 - HDMA1
+    pub dma_src_high: u8,
+
+    /// $FF52 - HDMA2
+    pub dma_src_low: u8,
+
+    /// $FF53 - HDMA3
+    pub dma_dst_high: u8,
+
+    /// $FF54 - HDMA4
+    pub dma_dst_low: u8,
+
+    /// $FF55 - HDMA5
+    pub dma_control: u8,
+
+    /// Signals whether HDMA is currently active.
+    pub hdma_active: bool,
+
+    /// The remaining length of the HDMA transfer.
+    pub hdma_len: u16,
+
+    /// The HDMA sourcefrom where to read the next byte.
+    pub hdma_src: u16,
+
+    /// The HDMA destination where to transfer the next byte.
+    pub hdma_dst: u16,
 }
 
 impl Bus {
@@ -91,6 +118,15 @@ impl Bus {
             boot_reg: 0,
             cgb_mode,
             wram_bank: 1,
+            dma_src_high: 0,
+            dma_src_low: 0,
+            dma_dst_high: 0,
+            dma_dst_low: 0,
+            dma_control: 0,
+            hdma_active: false,
+            hdma_len: 0,
+            hdma_dst: 0,
+            hdma_src: 0,
         }
     }
 
@@ -159,6 +195,10 @@ impl Bus {
                 }
             }
 
+            // HDMA5.
+            0xFF55 if self.cgb_mode => self.dma_control,
+
+            // SVBK.
             0xFF70 if self.cgb_mode => self.wram_bank as u8,
 
             // High RAM.
@@ -242,9 +282,68 @@ impl Bus {
                 }
             }
 
+            // BOOT register.
             0xFF50 => {
                 if self.boot_reg == 0 {
                     self.boot_reg = value;
+                }
+            }
+
+            // HDMA1
+            0xFF51 if self.cgb_mode => {
+                self.dma_src_high = value;
+            }
+
+            // HDMA2
+            0xFF52 if self.cgb_mode => {
+                self.dma_src_low = value;
+            }
+
+            // HDMA3
+            0xFF53 if self.cgb_mode => {
+                self.dma_dst_high = value;
+            }
+
+            // HDMA4
+            0xFF54 if self.cgb_mode => {
+                self.dma_dst_low = value;
+            }
+
+            // HDMA5
+            0xFF55 if self.cgb_mode => {
+                // The length of the DMA.
+                let len = (((value & 0x7F) as u16) + 1) << 4;
+
+                // Source and destination addresses of the DMA.
+                let src = ((self.dma_src_high as u16) << 8) | ((self.dma_src_low & 0xF0) as u16);
+                let dst = ((self.dma_dst_high as u16) << 8) | ((self.dma_dst_low & 0xF0) as u16);
+
+                // Check if the DMA is a GDMA or a HDMA.
+                if (value & 0x80) != 0 {
+                    self.dma_control = value;
+
+                    self.hdma_len = len;
+                    self.hdma_dst = dst;
+                    self.hdma_src = src;
+                    self.hdma_active = true;
+                } else {
+                    // If HDMA was activated earlier and top bit is 0 it means
+                    // instead of GDMA the ROM wants to cancel the earlier DMA.
+                    if self.hdma_active {
+                        self.hdma_active = false;
+                        self.dma_control = 0xFF;
+                        return;
+                    }
+
+                    // We copy all the bytes instantly and not worry about
+                    // timings currently.
+                    for i in 0..len {
+                        let value = self.read_byte(src + i, false);
+
+                        self.write_byte(dst + i, value, false);
+                    }
+
+                    self.dma_control = 0xFF;
                 }
             }
 
@@ -282,7 +381,32 @@ impl Bus {
     pub fn tick(&mut self) {
         self.timers.tick(&mut self.if_reg);
         self.joypad.tick(&mut self.if_reg);
-        self.ppu.tick(&mut self.if_reg);
         self.apu.tick();
+
+        let entered_hblank = self.ppu.tick(&mut self.if_reg);
+
+        // If we entered HBlank and HDMA is active perform
+        // a transfer of 0x10 bytes.
+        if entered_hblank && self.hdma_active {
+            for i in 0..0x10 {
+                let byte = self.read_byte(self.hdma_src + i, false);
+
+                // The destination is always in VRAM.
+                self.ppu
+                    .write_byte(((self.hdma_dst + i) & 0x1FFF) + 0x8000, byte);
+            }
+
+            self.hdma_len -= 0x10;
+            self.hdma_src += 0x10;
+            self.hdma_dst += 0x10;
+
+            self.dma_control -= 1;
+
+            // Switch off HDMA if all bytes are transferred.
+            if self.hdma_len == 0 {
+                self.dma_control = 0xFF;
+                self.hdma_active = false;
+            }
+        }
     }
 }
