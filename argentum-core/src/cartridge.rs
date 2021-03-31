@@ -24,6 +24,8 @@ pub trait Cartridge {
         // A game supports CGB functions if the upper bit is set.
         (cgb_flag_byte & 0x80) != 0
     }
+
+    fn dump_ram(&self) -> Option<Vec<u8>>;
 }
 
 /// Cartridge with just two ROM banks.
@@ -53,6 +55,10 @@ impl Cartridge for RomOnly {
     }
 
     fn write_byte(&mut self, _: u16, _: u8) {}
+
+    fn dump_ram(&self) -> Option<Vec<u8>> {
+        None
+    }
 }
 
 /// Cartridge with the MBC1 chip.
@@ -188,6 +194,14 @@ impl Cartridge for Mbc1 {
             _ => log::warn!("Write to external RAM occurred without first enabling it."),
         }
     }
+
+    fn dump_ram(&self) -> Option<Vec<u8>> {
+        if !self.ram.is_empty() {
+            Some(self.ram.clone())
+        } else {
+            None
+        }
+    }
 }
 
 /// Cartridge with the MBC3 chip.
@@ -220,10 +234,23 @@ pub struct Mbc3 {
 
 impl Mbc3 {
     /// Create a new `Mbc3` instance.
-    pub fn new(rom: &[u8]) -> Self {
+    pub fn new(rom: &[u8], save_file: Option<Vec<u8>>) -> Self {
+        let mut ram = vec![0u8; RAM_SIZES[rom[0x0149] as usize]];
+
+        if !ram.is_empty() {
+            if let Some(ram_save) = save_file {
+                if ram.len() != ram_save.len() {
+                    log::warn!("Found a save file, but it is incompatible!");
+                } else {
+                    ram.copy_from_slice(&ram_save);
+                    log::info!("Loaded a save file that was found in the same directory.");
+                }
+            }
+        }
+
         Self {
             rom: rom.to_vec(),
-            ram: vec![0u8; RAM_SIZES[rom[0x0149] as usize]],
+            ram,
             ram_enabled: false,
             rom_bank: 1,
             ram_bank: 0,
@@ -291,6 +318,14 @@ impl Cartridge for Mbc3 {
             }
 
             _ => {}
+        }
+    }
+
+    fn dump_ram(&self) -> Option<Vec<u8>> {
+        if !self.ram.is_empty() {
+            Some(self.ram.clone())
+        } else {
+            None
         }
     }
 }
@@ -403,6 +438,14 @@ impl Cartridge for Mbc5 {
             }
 
             _ => {}
+        }
+    }
+
+    fn dump_ram(&self) -> Option<Vec<u8>> {
+        if !self.ram.is_empty() {
+            Some(self.ram.clone())
+        } else {
+            None
         }
     }
 }

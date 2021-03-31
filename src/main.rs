@@ -64,7 +64,14 @@ pub fn main() {
         }
 
         // Read the ROM file into memory.
-        let rom = std::fs::read(opts.rom_file).expect("Failed to read the ROM file.");
+        let mut rom_path = opts.rom_file;
+
+        let rom = std::fs::read(&rom_path).expect("Failed to read the ROM file.");
+
+        // Check if there is a save file.
+        rom_path.set_extension("sav");
+
+        let save_file = std::fs::read(&rom_path).ok();
 
         // Create a Game Boy instance and skip the bootrom.
         let mut argentum = GameBoy::new(
@@ -80,6 +87,7 @@ pub fn main() {
                     (std::mem::size_of::<f32>() * buffer.len()) as u32,
                 );
             }),
+            save_file,
         );
 
         if opts.skip_bootrom {
@@ -186,6 +194,10 @@ pub fn main() {
 
             // Swap front and back buffers.
             SDL_GL_SwapWindow(window);
+        }
+
+        if let Some(ram_save) = argentum.get_ram_dump() {
+            std::fs::write(&rom_path, &ram_save).expect("Failed to write save file.");
         }
 
         // De-init SDL subsystems, and return.

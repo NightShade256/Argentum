@@ -1,4 +1,5 @@
 use alloc::boxed::Box;
+use alloc::vec::Vec;
 
 use crate::{audio::Apu, cartridge::*, joypad::Joypad, ppu::Ppu, timers::Timers};
 
@@ -80,7 +81,7 @@ pub struct Bus {
 
 impl Bus {
     /// Create a new `Bus` instance.
-    pub fn new(rom: &[u8], callback: Box<dyn Fn(&[f32])>) -> Self {
+    pub fn new(rom: &[u8], callback: Box<dyn Fn(&[f32])>, save_file: Option<Vec<u8>>) -> Self {
         log::info!("ROM Information:");
 
         let cartridge: Box<dyn Cartridge> = match rom[0x0147] {
@@ -94,7 +95,7 @@ impl Bus {
             }
             0x0F..=0x13 => {
                 log::info!("Cartridge Type: MBC3.");
-                Box::new(Mbc3::new(rom))
+                Box::new(Mbc3::new(rom, save_file))
             }
             0x19..=0x1E => {
                 log::info!("Cartridge Type: MBC5.");

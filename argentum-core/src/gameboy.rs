@@ -1,6 +1,7 @@
 //! Wrapper struct to conviniently abstract the inner workings.
 
 use alloc::boxed::Box;
+use alloc::vec::Vec;
 
 use crate::{bus::Bus, cpu::Cpu, joypad::GbKey};
 
@@ -14,9 +15,9 @@ pub struct GameBoy {
 
 impl GameBoy {
     /// Create a new `GameBoy` instance.
-    pub fn new(rom: &[u8], callback: Box<dyn Fn(&[f32])>) -> Self {
+    pub fn new(rom: &[u8], callback: Box<dyn Fn(&[f32])>, save_file: Option<Vec<u8>>) -> Self {
         let mut gameboy = Self {
-            bus: Bus::new(rom, callback),
+            bus: Bus::new(rom, callback, save_file),
             cpu: Cpu::new(),
         };
 
@@ -61,5 +62,14 @@ impl GameBoy {
     /// Redirects to joypad interface.
     pub fn key_up(&mut self, key: GbKey) {
         self.bus.joypad.key_up(key);
+    }
+
+    /// Dump the SRAM and get a copy.
+    pub fn get_ram_dump(&self) -> Option<Vec<u8>> {
+        if !([0x03, 0x0F, 0x10, 0x13, 0x1B, 0x1E].contains(&self.bus.cartridge.read_byte(0x0147))) {
+            return None;
+        }
+
+        self.bus.cartridge.dump_ram()
     }
 }
