@@ -5,7 +5,7 @@ members = [
 
 [package]
 name = "argentum-gb"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Anish Jewalikar <anishjewalikar@gmail.com>"]
 edition = "2018"
 license = "Apache-2.0"
