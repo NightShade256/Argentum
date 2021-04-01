@@ -454,12 +454,26 @@ impl Ppu {
     }
 
     /// Scale the CGB 5 bit RGB to standard 8 bit RGB.
+    /// Colour Correction Algorithm taken from Byuu's (Near) blog.
+    /// https://near.sh/articles/video/color-emulation
     fn scale_rgb(&self, cgb_colour: u16) -> u32 {
         let mut scaled = 0x000000FF;
 
-        scaled |= (((((cgb_colour >> 0) & 0x1F) * 0xFF) / 0x1F) as u32) << 24;
-        scaled |= (((((cgb_colour >> 5) & 0x1F) * 0xFF) / 0x1F) as u32) << 16;
-        scaled |= (((((cgb_colour >> 10) & 0x1F) * 0xFF) / 0x1F) as u32) << 8;
+        let red = (cgb_colour >> 0) & 0x1F;
+        let green = (cgb_colour >> 5) & 0x1F;
+        let blue = (cgb_colour >> 10) & 0x1F;
+
+        let mut new_red = red * 26 + green * 4 + blue * 2;
+        let mut new_green = green * 24 + blue * 8;
+        let mut new_blue = red * 6 + green * 4 + blue * 22;
+
+        new_red = new_red.min(960) >> 2;
+        new_green = new_green.min(960) >> 2;
+        new_blue = new_blue.min(960) >> 2;
+
+        scaled |= (new_red as u32) << 24;
+        scaled |= (new_green as u32) << 16;
+        scaled |= (new_blue as u32) << 8;
 
         scaled
     }
