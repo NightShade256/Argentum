@@ -151,9 +151,6 @@ pub struct Ppu {
     /// Background colour palette memory.
     obj_palettes: Box<[u8; 0x40]>,
 
-    /// The object priority mode flag.
-    opri: bool,
-
     line_priorities: Box<[(u8, bool); 160]>,
 
     /// Is the VRAM currently banked to 2nd bank.
@@ -210,7 +207,6 @@ impl Ppu {
             0xFF69 => self.bgd_palettes[(self.bcps & 0b0011_1111) as usize],
             0xFF6A => self.ocps,
             0xFF6B => self.obj_palettes[(self.ocps & 0b0011_1111) as usize],
-            0xFF6C => self.opri as u8,
 
             _ => unreachable!(),
         }
@@ -268,7 +264,6 @@ impl Ppu {
                     self.ocps |= new_index;
                 }
             }
-            0xFF6C => self.opri = (value & 0b1) != 0,
 
             _ => unreachable!(),
         }
@@ -295,7 +290,6 @@ impl Ppu {
             bgd_palettes: Box::new([0; 0x40]),
             ocps: 0,
             obj_palettes: Box::new([0; 0x40]),
-            opri: false,
             line_priorities: Box::new([(0, false); 160]),
             vram_banked: false,
             window_line: 0,
@@ -694,29 +688,26 @@ impl Ppu {
         //    over the sprite that has a higher X coordinate.
         // 2. The sprite that appeared earlier in the OAM RAM will draw
         //    over the sprite with same X coordinates.
-        sprites.sort_by(|&a, &b| {
-            use core::cmp::Ordering;
+        if !self.cgb_mode {
+            sprites.sort_by(|&a, &b| {
+                use core::cmp::Ordering;
 
-            let res = a.1.x.cmp(&b.1.x);
+                let res = a.1.x.cmp(&b.1.x);
 
-            if let Ordering::Equal = res {
-                // X coordinates are equal,
-                // therefore the one that appeared earlier wins.
-                // BUT we reverse the order since we have to draw the sprite
-                // over the other.
-                a.0.cmp(&b.0).reverse()
-            } else {
-                // Here the lower X wins.
-                // BUT we reverse the order since we have to draw the sprite
-                // over the other.
-
-                if self.cgb_mode && !self.opri {
-                    res
+                if let Ordering::Equal = res {
+                    // X coordinates are equal,
+                    // therefore the one that appeared earlier wins.
+                    // BUT we reverse the order since we have to draw the sprite
+                    // over the other.
+                    a.0.cmp(&b.0).reverse()
                 } else {
+                    // Here the lower X wins.
+                    // BUT we reverse the order since we have to draw the sprite
+                    // over the other.
                     res.reverse()
                 }
-            }
-        });
+            });
+        }
 
         // Render the sprites.
         for (_, sprite) in sprites {

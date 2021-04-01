@@ -4,6 +4,7 @@
 # Test and Game ROM(s).
 *.gb
 *.gbc
+*.sav
 
 # Editor Config
 /.vscode
