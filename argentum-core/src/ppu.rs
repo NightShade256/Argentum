@@ -721,6 +721,8 @@ impl Ppu {
                     res.reverse()
                 }
             });
+        } else {
+            sprites.reverse();
         }
 
         // Render the sprites.
