@@ -99,15 +99,6 @@ pub fn main() {
             panic!("Failed to initialize SDL.");
         }
 
-        // Set OpenGL attributes.
-        SDL_GL_SetAttribute(
-            SDL_GL_CONTEXT_PROFILE_MASK,
-            SDL_GL_CONTEXT_PROFILE_CORE.0 as i32,
-        );
-
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-
         // Create a SDL window, and an OpenGL context.
         let title = CString::new("Argentum GB").unwrap();
 
@@ -119,8 +110,6 @@ pub fn main() {
             432,
             SDL_WINDOW_OPENGL.0,
         );
-
-        let context = SDL_GL_CreateContext(window);
 
         // Set the window icon.
         let mut logo_bytes = include_bytes!("images/argentum_logo.rgb").to_vec();
@@ -137,18 +126,8 @@ pub fn main() {
         SDL_SetWindowIcon(window, icon_surface);
         SDL_FreeSurface(icon_surface);
 
-        // Make the context, "current".
-        SDL_GL_MakeCurrent(window, context);
-
         // Create our renderer instance, and set OpenGL viewport.
-        let mut renderer = Renderer::new(|s| SDL_GL_GetProcAddress(s as _));
-
-        let mut w: i32 = 0;
-        let mut h: i32 = 0;
-
-        SDL_GL_GetDrawableSize(window, &mut w as _, &mut h as _);
-
-        renderer.set_viewport(w, h);
+        let mut renderer = Renderer::new(window);
 
         // Setup SDL audio system.
         let mut audio_spec: SDL_AudioSpec = std::mem::zeroed();
@@ -190,7 +169,7 @@ pub fn main() {
             argentum.execute_frame();
 
             // Render the framebuffer to the backbuffer.
-            renderer.render_buffer(argentum.get_framebuffer());
+            renderer.update_texture(argentum.get_framebuffer());
 
             // Swap front and back buffers.
             SDL_GL_SwapWindow(window);
@@ -202,7 +181,6 @@ pub fn main() {
 
         // De-init SDL subsystems, and return.
         SDL_CloseAudio();
-        SDL_GL_DeleteContext(context);
         SDL_DestroyWindow(window);
         SDL_Quit();
     }
