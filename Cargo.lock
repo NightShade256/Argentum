@@ -25,7 +25,6 @@ dependencies = [
  "clap",
  "env_logger",
  "fermium",
- "gl33",
 ]
 
 [[package]]
@@ -125,21 +124,12 @@ dependencies = [
 
 [[package]]
 name = "fermium"
-version = "20014.4.1"
+version = "20014.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cbf3ab7d9041631035d9aed7bd576613880466a5687c18b507a29f48f3751d43"
+checksum = "d91ca2119a89bfd3d3069b04631b36c918c1a5e51ac1bb339bd75d77d103d427"
 dependencies = [
  "chlorine",
  "cmake",
-]
-
-[[package]]
-name = "gl33"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29b2b7ada5ed872363f5d27e54e7cae69148cb5e4d05aa3cac1a40c30519bda3"
-dependencies = [
- "chlorine",
 ]
 
 [[package]]
