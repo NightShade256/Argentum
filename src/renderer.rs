@@ -47,3 +47,12 @@ impl Renderer {
         }
     }
 }
+
+impl Drop for Renderer {
+    fn drop(&mut self) {
+        unsafe {
+            SDL_DestroyTexture(self.texture);
+            SDL_DestroyRenderer(self.renderer);
+        }
+    }
+}

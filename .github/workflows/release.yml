@@ -61,13 +61,13 @@ jobs:
         uses: actions/download-artifact@v2
       - name: Rename Artifacts
         run: |
-          mv ./windows-artifact/argentum-gb.exe ./argentum-gb.exe
-          mv ./linux-artifact/argentum-gb ./argentum-gb.run
+          mv ./windows-artifact/argentum-gb.exe ./argentum-windows.exe
+          mv ./linux-artifact/argentum-gb ./argentum-linux.run
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            argentum-gb.exe
-            argentum-gb.run
+            argentum-windows.exe
+            argentum-linux.run
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
