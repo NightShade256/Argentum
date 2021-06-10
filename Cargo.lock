@@ -10,21 +10,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "argentum-core"
-version = "0.3.2"
-dependencies = [
- "bitflags",
- "log",
-]
-
-[[package]]
-name = "argentum-gb"
+name = "argentum"
 version = "0.3.2"
 dependencies = [
  "argentum-core",
  "clap",
  "env_logger",
  "fermium",
+]
+
+[[package]]
+name = "argentum-core"
+version = "0.3.2"
+dependencies = [
+ "bitflags",
+ "log",
 ]
 
 [[package]]

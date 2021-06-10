@@ -24,7 +24,7 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: windows-artifact
-          path: target/release/argentum-gb.exe
+          path: target/release/argentum.exe
 
   build-linux:
     runs-on: ubuntu-latest
@@ -48,7 +48,7 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: linux-artifact
-          path: target/release/argentum-gb
+          path: target/release/argentum
 
   create-release:
     runs-on: ubuntu-latest
@@ -61,8 +61,8 @@ jobs:
         uses: actions/download-artifact@v2
       - name: Rename Artifacts
         run: |
-          mv ./windows-artifact/argentum-gb.exe ./argentum-windows.exe
-          mv ./linux-artifact/argentum-gb ./argentum-linux.run
+          mv ./windows-artifact/argentum.exe ./argentum-windows.exe
+          mv ./linux-artifact/argentum ./argentum-linux.run
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
