@@ -1,7 +1,7 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
-use crate::{audio::Apu, cartridge::*, joypad::Joypad, ppu::Ppu, timers::Timers};
+use crate::{audio::Apu, cartridge::*, joypad::Joypad, ppu::Ppu, timer::Timer};
 
 /// This is the custom copyright free bootrom for DMG
 /// made by Optix.
@@ -20,7 +20,7 @@ pub struct Bus {
 
     /// The Game Boy timer apparatus.
     /// DIV, TIMA and co.
-    pub timers: Timers,
+    pub timers: Timer,
 
     /// The Game Boy PPU.
     /// Contains VRAM, OAM RAM and drawing logic.
@@ -113,7 +113,7 @@ impl Bus {
             cartridge,
             work_ram: Box::new([0; 0x8000]),
             high_ram: Box::new([0; 0x7F]),
-            timers: Timers::new(),
+            timers: Timer::new(),
             ppu: Ppu::new(cgb_mode),
             apu: Apu::new(callback),
             joypad: Joypad::new(),

@@ -9,7 +9,8 @@ mod cpu;
 mod gameboy;
 mod joypad;
 mod ppu;
-mod timers;
+mod timer;
+mod util;
 
 pub use gameboy::GameBoy;
 pub use joypad::GbKey;
