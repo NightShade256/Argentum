@@ -1,6 +1,6 @@
 //! Contains implementation of the Game Boy PPU.
 
-use bitflags::bitflags;
+use crate::{get_bit, set_bit};
 
 /// The colour palette used in DMG mode.
 /// 0 - White
@@ -8,55 +8,6 @@ use bitflags::bitflags;
 /// 2 - Dark Gray
 /// 3 - Black
 const DMG_MODE_PALETTE: [u32; 4] = [0xFED018, 0xD35600, 0x5E1210, 0x0D0405];
-
-bitflags! {
-    /// Struct that represents the LCD control register.
-    struct Lcdc: u8 {
-        /// LCD display enable.
-        const LCD_ENABLE = 0b1000_0000;
-
-        /// Window tile map display select.
-        const WINDOW_SELECT = 0b0100_0000;
-
-        /// Window display enable.
-        const WINDOW_ENABLE = 0b0010_0000;
-
-        /// BG & Window tile data select.
-        const TILE_DATA = 0b0001_0000;
-
-        /// BG tile map display select.
-        const BG_SELECT = 0b0000_1000;
-
-        /// Sprite Size.
-        const SPRITE_SIZE = 0b0000_0100;
-
-        /// Sprite Display Enable.
-        const SPRITE_ENABLE = 0b0000_0010;
-
-        /// BG/Window Enable.
-        const BG_WIN_ENABLE = 0b0000_0001;
-    }
-}
-
-bitflags! {
-    /// Struct that represents the STAT register.
-    struct Stat: u8 {
-        /// LYC = LY coincidence interrupt.
-        const COINCIDENCE_INT = 0b0100_0000;
-
-        /// OAM search interrupt.
-        const OAM_INT = 0b0010_0000;
-
-        /// VBLANK interrupt.
-        const VBLANK_INT = 0b0001_0000;
-
-        /// HBLANK interrupt.
-        const HBLANK_INT = 0b0000_1000;
-
-        /// LY and LYC coincidence flag.
-        const COINCIDENCE_FLAG = 0b0000_0100;
-    }
-}
 
 /// Represents sprite data as stored in OAM.
 #[derive(Clone, Copy)]
@@ -106,11 +57,11 @@ pub struct Ppu {
 
     /// The LCD control register. Controls all basic aspects
     /// of rendering.
-    lcdc: Lcdc,
+    lcdc: u8,
 
     /// LCD status register. Conveys which mode PPU is in, plus
     /// has some interrupt controls.
-    stat: Stat,
+    stat: u8,
 
     /// Controls vertical scroll (Y axis).
     scy: u8,
@@ -145,8 +96,8 @@ pub struct Ppu {
     /// This is reset after every frame.
     window_line: u8,
 
-    /// Indicates whether we should perform behaviour
-    /// similar to the DMG or CGB.
+    /// Indicates whether we should emulate the DMG or the
+    /// CGB.
     cgb_mode: bool,
 
     /// Specifies the index of byte curently selected in BCPD.
@@ -194,8 +145,8 @@ impl Ppu {
 
             0xFE00..=0xFE9F => self.oam_ram[(addr - 0xFE00) as usize],
 
-            0xFF40 => self.lcdc.bits(),
-            0xFF41 => (self.current_mode as u8) | self.stat.bits() | (1 << 7),
+            0xFF40 => self.lcdc,
+            0xFF41 => (self.stat | 0x80) | self.current_mode as u8,
             0xFF42 => self.scy,
             0xFF43 => self.scx,
             0xFF44 => self.ly,
@@ -229,8 +180,8 @@ impl Ppu {
 
             0xFE00..=0xFE9F => self.oam_ram[(addr - 0xFE00) as usize] = value,
 
-            0xFF40 => self.lcdc = Lcdc::from_bits_truncate(value),
-            0xFF41 => self.stat = Stat::from_bits_truncate(value),
+            0xFF40 => self.lcdc = value,
+            0xFF41 => self.stat = value & 0x78,
             0xFF42 => self.scy = value,
             0xFF43 => self.scx = value,
             0xFF44 => {}
@@ -280,8 +231,8 @@ impl Ppu {
             oam_ram: [0; 0xA0],
             ly: 0,
             lyc: 0,
-            lcdc: Lcdc::from_bits_truncate(0x91),
-            stat: Stat::empty(),
+            lcdc: 0x91,
+            stat: 0x00,
             scy: 0,
             scx: 0,
             bgp: 0xFC,
@@ -314,7 +265,7 @@ impl Ppu {
 
                 // Request STAT interrupt if
                 // the appropriate bit is set.
-                if self.stat.contains(Stat::HBLANK_INT) {
+                if get_bit!(self.stat, 3) {
                     *if_reg |= 0b0000_0010;
                 }
             }
@@ -327,7 +278,7 @@ impl Ppu {
 
                 // Request STAT interrupt if
                 // the appropriate bit is set.
-                if self.stat.contains(Stat::VBLANK_INT) {
+                if get_bit!(self.stat, 4) {
                     *if_reg |= 0b0000_0010;
                 }
             }
@@ -337,7 +288,7 @@ impl Ppu {
 
                 // Request STAT interrupt if
                 // the appropriate bit is set.
-                if self.stat.contains(Stat::OAM_INT) {
+                if get_bit!(self.stat, 5) {
                     *if_reg |= 0b0000_0010;
                 }
             }
@@ -351,13 +302,13 @@ impl Ppu {
     /// Compare LY and LYC, set bits and trigger interrupts.
     fn compare_lyc(&mut self, if_reg: &mut u8) {
         if self.ly == self.lyc {
-            self.stat.insert(Stat::COINCIDENCE_FLAG);
+            set_bit!(&mut self.stat, 2, true);
 
-            if self.stat.contains(Stat::COINCIDENCE_INT) {
+            if get_bit!(self.stat, 6) {
                 *if_reg |= 0b0000_0010;
             }
         } else {
-            self.stat.remove(Stat::COINCIDENCE_FLAG);
+            set_bit!(&mut self.stat, 2, false);
         }
     }
 
@@ -370,7 +321,7 @@ impl Ppu {
     /// Tick the PPU by 1 M cycle, and return a bool
     /// that tells if we have entered HBlank.
     pub fn tick(&mut self, if_reg: &mut u8, cycles: u32) -> bool {
-        if !self.lcdc.contains(Lcdc::LCD_ENABLE) {
+        if !get_bit!(self.lcdc, 7) {
             return false;
         }
 
@@ -487,7 +438,7 @@ impl Ppu {
         // of background and window rendering.
         // (it also overrides the window enable bit)
         // Note: This does not affect sprite rendering.
-        if !self.lcdc.contains(Lcdc::BG_WIN_ENABLE) && !self.cgb_mode {
+        if !get_bit!(self.lcdc, 0) && !self.cgb_mode {
             return;
         }
 
@@ -498,7 +449,7 @@ impl Ppu {
 
         // The tile map that is going to be used to render
         // the window.
-        let win_map = if self.lcdc.contains(Lcdc::WINDOW_SELECT) {
+        let win_map = if get_bit!(self.lcdc, 6) {
             0x1C00
         } else {
             0x1800
@@ -506,7 +457,7 @@ impl Ppu {
 
         // The tile map that is going to be used to render
         // the background.
-        let bgd_map = if self.lcdc.contains(Lcdc::BG_SELECT) {
+        let bgd_map = if get_bit!(self.lcdc, 3) {
             0x1C00
         } else {
             0x1800
@@ -514,7 +465,7 @@ impl Ppu {
 
         // The tile data that is going to be used for rendering
         // the above tile maps.
-        let tile_data = if self.lcdc.contains(Lcdc::TILE_DATA) {
+        let tile_data = if get_bit!(self.lcdc, 4) {
             0x0000
         } else {
             0x1000
@@ -525,22 +476,20 @@ impl Ppu {
 
         for x in 0u8..160u8 {
             // Extract the absolute X and Y coordinates of the pixel in the respective 256 x 256 tile map.
-            let (map_x, map_y, tile_map) = if self.lcdc.contains(Lcdc::WINDOW_ENABLE)
-                && self.wy <= self.ly
-                && self.wx <= x + 7
-            {
-                let map_x = x.wrapping_add(7).wrapping_sub(self.wx);
-                let map_y = self.window_line;
+            let (map_x, map_y, tile_map) =
+                if get_bit!(self.lcdc, 5) && self.wy <= self.ly && self.wx <= x + 7 {
+                    let map_x = x.wrapping_add(7).wrapping_sub(self.wx);
+                    let map_y = self.window_line;
 
-                increment_window_counter = true;
+                    increment_window_counter = true;
 
-                (map_x, map_y, win_map)
-            } else {
-                let map_x = x.wrapping_add(self.scx);
-                let map_y = self.ly.wrapping_add(self.scy);
+                    (map_x, map_y, win_map)
+                } else {
+                    let map_x = x.wrapping_add(self.scx);
+                    let map_y = self.ly.wrapping_add(self.scy);
 
-                (map_x, map_y, bgd_map)
-            };
+                    (map_x, map_y, bgd_map)
+                };
 
             // Extract the X and Y coordinates of the pixel inside the
             // respective tile.
@@ -646,17 +595,13 @@ impl Ppu {
     fn render_sprites(&mut self) {
         // The 1st bit of LCDC controls whether OBJs (sprites)
         // are enabled or not.
-        if !self.lcdc.contains(Lcdc::SPRITE_ENABLE) {
+        if !get_bit!(self.lcdc, 1) {
             return;
         }
 
         // If the 2nd bit of LCDC is reset the sprite's size is taken to
         // be 8 x 8 else it's 8 x 16.
-        let sprite_size = if self.lcdc.contains(Lcdc::SPRITE_SIZE) {
-            16
-        } else {
-            8
-        };
+        let sprite_size = if get_bit!(self.lcdc, 2) { 16 } else { 8 };
 
         // Go through the OAM ram and search for all the sprites
         // that are visible in this scanline.
@@ -800,7 +745,7 @@ impl Ppu {
                     // We don't draw pixels that are transparent.
                     if colour_index != 0 {
                         if self.cgb_mode {
-                            if !self.lcdc.contains(Lcdc::BG_WIN_ENABLE)
+                            if !get_bit!(self.lcdc, 0)
                                 || (self.line_priorities[actual_x as usize].0 == 0)
                                 || (!self.line_priorities[actual_x as usize].1 && sprite_over_bg)
                             {
