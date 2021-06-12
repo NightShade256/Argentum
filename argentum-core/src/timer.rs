@@ -1,5 +1,3 @@
-//! Implementation of the Game Boy timer sub-system.
-
 use crate::set_bit;
 
 #[derive(Default)]

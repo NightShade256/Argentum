@@ -2,9 +2,6 @@
 
 #![allow(clippy::identity_op)]
 
-use alloc::boxed::Box;
-use alloc::vec::Vec;
-
 use bitflags::bitflags;
 
 /// The colour palette used in DMG mode.

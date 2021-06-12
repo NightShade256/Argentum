@@ -1,8 +1,5 @@
 //! Wrapper struct to conviniently abstract the inner workings.
 
-use alloc::boxed::Box;
-use alloc::vec::Vec;
-
 use crate::{bus::Bus, cpu::Cpu, joypad::GbKey};
 
 /// T-cycles to execute per frame.

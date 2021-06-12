@@ -4,8 +4,7 @@ mod decode;
 mod instructions;
 mod registers;
 
-use alloc::format;
-use core::fmt::{Display, Formatter, Result};
+use std::fmt::{Display, Formatter, Result};
 
 use self::registers::Registers;
 use crate::bus::Bus;

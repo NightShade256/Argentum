@@ -1,5 +1,3 @@
-use alloc::boxed::Box;
-
 /// The rate at which samples are consumed by the audio
 /// driver.
 pub const SAMPLE_RATE: usize = 65536;

@@ -1,7 +1,3 @@
-use alloc::string::String;
-use alloc::vec;
-use alloc::vec::Vec;
-
 /// RAM Size corresponding to indices
 /// in cartridge headers.
 const RAM_SIZES: [usize; 6] = [0x0000, 0x0000, 0x2000, 0x8000, 0x20000, 0x10000];

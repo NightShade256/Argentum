@@ -1,7 +1,3 @@
-#![no_std]
-
-extern crate alloc;
-
 mod audio;
 mod bus;
 mod cartridge;

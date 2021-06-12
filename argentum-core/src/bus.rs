@@ -1,6 +1,3 @@
-use alloc::boxed::Box;
-use alloc::vec::Vec;
-
 use crate::{audio::Apu, cartridge::*, joypad::Joypad, ppu::Ppu, timer::Timer};
 
 /// This is the custom copyright free bootrom for DMG
