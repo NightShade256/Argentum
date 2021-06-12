@@ -16,7 +16,7 @@ impl Renderer {
 
             let texture = SDL_CreateTexture(
                 renderer,
-                SDL_PIXELFORMAT_RGBA32.0,
+                SDL_PIXELFORMAT_RGB24.0,
                 SDL_TEXTUREACCESS_STREAMING.0,
                 160,
                 144,
@@ -33,7 +33,7 @@ impl Renderer {
                 self.texture,
                 std::ptr::null(),
                 buffer.as_ptr() as _,
-                4 * 160,
+                3 * 160,
             );
 
             SDL_RenderCopy(

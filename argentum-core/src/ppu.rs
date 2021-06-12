@@ -1,7 +1,5 @@
 //! Contains implementation of the Game Boy PPU.
 
-#![allow(clippy::identity_op)]
-
 use bitflags::bitflags;
 
 /// The colour palette used in DMG mode.
@@ -9,8 +7,7 @@ use bitflags::bitflags;
 /// 1 - Light Gray
 /// 2 - Dark Gray
 /// 3 - Black
-/// Alpha is FF in all cases.
-const DMG_PALETTE: [u32; 4] = [0xFED018FF, 0xD35600FF, 0x5E1210FF, 0x0D0405FF];
+const DMG_MODE_PALETTE: [u32; 4] = [0xFED018, 0xD35600, 0x5E1210, 0x0D0405];
 
 bitflags! {
     /// Struct that represents the LCD control register.
@@ -89,52 +86,68 @@ pub enum PpuModes {
 
 /// Implementation of the Game Boy PPU.
 pub struct Ppu {
-    /// Indicates whether we should perform behaviour
-    /// similar to the DMG or CGB.
-    cgb_mode: bool,
-
-    /// 8 KB Video RAM
+    /// 8 KiB of Video RAM
     /// Mapped to 0x8000 to 0x9FFF.
     /// Capacity for two complete banks, but only 1 used
     /// in DMG mode.
-    vram: Box<[u8; 0x4000]>,
+    vram: [u8; 0x4000],
 
-    /// Object Attribute Map RAM.
+    /// 160 B of OAM RAM.
     /// Mapped to 0xFE00 to 0xFE9F.
-    oam: Box<[u8; 0xA0]>,
+    oam_ram: [u8; 0xA0],
 
-    /// The current scanline the PPU is rendering.
+    /// The current scanline, that is being rendered.
+    /// Read-only indicator to the ROM.
     ly: u8,
 
-    /// LY Compare register.
+    /// LY Compare register. STAT interrupt is triggered
+    /// if LYC = LY.
     lyc: u8,
 
-    /// The LCD control register.
+    /// The LCD control register. Controls all basic aspects
+    /// of rendering.
     lcdc: Lcdc,
 
-    /// LCD status register.
+    /// LCD status register. Conveys which mode PPU is in, plus
+    /// has some interrupt controls.
     stat: Stat,
 
-    /// Scroll Y register.
+    /// Controls vertical scroll (Y axis).
     scy: u8,
 
-    /// Scroll X register.
+    /// Controls horizontal scroll (X axis).
     scx: u8,
 
-    /// Background palette data.
+    /// Background palette data set by the ROM,
+    /// Only used in DMG mode.
     bgp: u8,
 
-    /// Object palette 0
+    /// Object (sprite) palette 0,
+    /// Only used in DMG mode.
     obp0: u8,
 
-    /// Object palette 1
+    /// Object (sprite) palette 1,
+    /// Only used in DMG mode.
     obp1: u8,
 
     /// Window X coordinate - 7.
+    /// Note: This is an absolute coordinate.
     wx: u8,
 
     /// Window Y coordinate.
+    /// Note: This is an absolute coordinate.
     wy: u8,
+
+    /// Internal window line counter.
+    /// If a window is enabled, disabled and then enabled again
+    /// the window rendering will continue off from the line that it
+    /// last rendered.
+    /// This is reset after every frame.
+    window_line: u8,
+
+    /// Indicates whether we should perform behaviour
+    /// similar to the DMG or CGB.
+    cgb_mode: bool,
 
     /// Specifies the index of byte curently selected in BCPD.
     bcps: u8,
@@ -153,13 +166,6 @@ pub struct Ppu {
     /// Is the VRAM currently banked to 2nd bank.
     vram_banked: bool,
 
-    /// Internal window line counter.
-    /// If a window is enabled, disabled and then enabled again
-    /// the window rendering will continue off from the line that it
-    /// last rendered.
-    /// This is reset after every frame.
-    window_line: u8,
-
     /// The current mode the PPU is in.
     current_mode: PpuModes,
 
@@ -167,10 +173,10 @@ pub struct Ppu {
     total_cycles: u32,
 
     /// RGBA32 framebuffer, this is the back buffer.
-    back_framebuffer: Box<[u8; 160 * 144 * 4]>,
+    back_framebuffer: Box<[u8; 160 * 144 * 3]>,
 
     /// RGBA32 framebuffer, this is the front buffer.
-    pub front_framebuffer: Box<[u8; 160 * 144 * 4]>,
+    pub front_framebuffer: Box<[u8; 160 * 144 * 3]>,
 }
 
 impl Ppu {
@@ -186,7 +192,7 @@ impl Ppu {
                 }
             }
 
-            0xFE00..=0xFE9F => self.oam[(addr - 0xFE00) as usize],
+            0xFE00..=0xFE9F => self.oam_ram[(addr - 0xFE00) as usize],
 
             0xFF40 => self.lcdc.bits(),
             0xFF41 => (self.current_mode as u8) | self.stat.bits() | (1 << 7),
@@ -221,7 +227,7 @@ impl Ppu {
                 }
             }
 
-            0xFE00..=0xFE9F => self.oam[(addr - 0xFE00) as usize] = value,
+            0xFE00..=0xFE9F => self.oam_ram[(addr - 0xFE00) as usize] = value,
 
             0xFF40 => self.lcdc = Lcdc::from_bits_truncate(value),
             0xFF41 => self.stat = Stat::from_bits_truncate(value),
@@ -270,8 +276,8 @@ impl Ppu {
     pub fn new(cgb_mode: bool) -> Self {
         Self {
             cgb_mode,
-            vram: Box::new([0; 0x4000]),
-            oam: Box::new([0; 0xA0]),
+            vram: [0; 0x4000],
+            oam_ram: [0; 0xA0],
             ly: 0,
             lyc: 0,
             lcdc: Lcdc::from_bits_truncate(0x91),
@@ -292,8 +298,8 @@ impl Ppu {
             window_line: 0,
             current_mode: PpuModes::OamSearch,
             total_cycles: 0,
-            back_framebuffer: Box::new([0; 160 * 144 * 4]),
-            front_framebuffer: Box::new([0; 160 * 144 * 4]),
+            back_framebuffer: Box::new([0; 160 * 144 * 3]),
+            front_framebuffer: Box::new([0; 160 * 144 * 3]),
         }
     }
 
@@ -428,33 +434,33 @@ impl Ppu {
         entered_hblank
     }
 
-    /// Draw a pixel in the framebuffer at the given `x` and `y`
+    /// Set a pixel in the framebuffer at the given `x` and `y`
     /// coordinates.
-    fn draw_pixel(&mut self, x: u8, y: u8, colour: u32) {
-        let offset = (y as usize * 160 * 4) + x as usize * 4;
-        let bytes = colour.to_be_bytes();
+    fn set_pixel(&mut self, x: u8, y: u8, colour: u32) {
+        let offset = (((y as usize) << 5) * 15) + (x as usize * 3);
 
-        self.back_framebuffer[offset..offset + 4].copy_from_slice(&bytes);
+        self.back_framebuffer[offset] = ((colour & 0xFF0000) >> 16) as u8;
+        self.back_framebuffer[offset + 1] = ((colour & 0x00FF00) >> 8) as u8;
+        self.back_framebuffer[offset + 2] = (colour & 0x0000FF) as u8;
     }
 
-    /// Gets the colour of a particular pixel at the given `x` and `y`
+    /// Get a pixel in the framebuffer at the given `x` and `y`
     /// coordinates.
-    fn get_pixel(&self, x_coord: u8, y_coord: u8) -> u32 {
-        let offset = (y_coord as usize * 160 * 4) + x_coord as usize * 4;
+    fn get_pixel(&self, x: u8, y: u8) -> u32 {
+        let offset = (((y as usize) << 5) * 15) + (x as usize * 3);
 
         let r = self.back_framebuffer[offset];
         let g = self.back_framebuffer[offset + 1];
         let b = self.back_framebuffer[offset + 2];
-        let a = self.back_framebuffer[offset + 3];
 
-        ((r as u32) << 24) | ((g as u32) << 16) | ((b as u32) << 8) | (a as u32)
+        ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)
     }
 
     /// Scale the CGB 5 bit RGB to standard 8 bit RGB.
     /// Colour Correction Algorithm taken from Byuu's (Near) blog.
     /// https://near.sh/articles/video/color-emulation
     fn scale_rgb(&self, cgb_colour: u16) -> u32 {
-        let mut scaled = 0x000000FF;
+        let mut scaled = 0x000000;
 
         let red = (cgb_colour >> 0) & 0x1F;
         let green = (cgb_colour >> 5) & 0x1F;
@@ -468,9 +474,9 @@ impl Ppu {
         new_green = new_green.min(960) >> 2;
         new_blue = new_blue.min(960) >> 2;
 
-        scaled |= (new_red as u32) << 24;
-        scaled |= (new_green as u32) << 16;
-        scaled |= (new_blue as u32) << 8;
+        scaled |= (new_red as u32) << 16;
+        scaled |= (new_green as u32) << 8;
+        scaled |= new_blue as u32;
 
         scaled
     }
@@ -586,9 +592,9 @@ impl Ppu {
                     (((msb >> (7 - tile_x)) & 0x01) << 1) | ((lsb >> (7 - tile_x)) & 0x01);
 
                 // Extract the actual pixel colour, that we are going to use.
-                let colour = DMG_PALETTE[((self.bgp >> (tile_colour << 1)) & 0x03) as usize];
+                let colour = DMG_MODE_PALETTE[((self.bgp >> (tile_colour << 1)) & 0x03) as usize];
 
-                self.draw_pixel(x, self.ly, colour);
+                self.set_pixel(x, self.ly, colour);
             } else {
                 // Extract the background attributes.
                 let bg_attributes = self.vram[tile_number_index as usize + 0x2000];
@@ -629,7 +635,7 @@ impl Ppu {
                 // Scale 5 bit RGB to 8 bit RGB.
                 let colour = self.scale_rgb(cgb_colour);
 
-                self.draw_pixel(x, self.ly, colour);
+                self.set_pixel(x, self.ly, colour);
             }
         }
 
@@ -660,7 +666,7 @@ impl Ppu {
         // 1. Y COORD <= LY
         // 2. Y COORD + SPRITE SIZE > LY
         let mut sprites = self
-            .oam
+            .oam_ram
             .chunks_exact(4)
             .filter_map(|entry| {
                 if let [y, x, tile_number, flags] = *entry {
@@ -788,7 +794,7 @@ impl Ppu {
 
                         self.scale_rgb(cgb_colour)
                     } else {
-                        DMG_PALETTE[((palette >> (colour_index << 1)) & 0x03) as usize]
+                        DMG_MODE_PALETTE[((palette >> (colour_index << 1)) & 0x03) as usize]
                     };
 
                     // We don't draw pixels that are transparent.
@@ -798,12 +804,12 @@ impl Ppu {
                                 || (self.line_priorities[actual_x as usize].0 == 0)
                                 || (!self.line_priorities[actual_x as usize].1 && sprite_over_bg)
                             {
-                                self.draw_pixel(actual_x, self.ly, colour);
+                                self.set_pixel(actual_x, self.ly, colour);
                             }
                         } else if sprite_over_bg
-                            || self.get_pixel(actual_x, self.ly) == DMG_PALETTE[0]
+                            || self.get_pixel(actual_x, self.ly) == DMG_MODE_PALETTE[0]
                         {
-                            self.draw_pixel(actual_x, self.ly, colour);
+                            self.set_pixel(actual_x, self.ly, colour);
                         }
                     }
                 }

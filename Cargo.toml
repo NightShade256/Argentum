@@ -17,4 +17,4 @@ env_logger = "0.8.3"
 fermium = "20014.4.2"
 
 [profile.release]
-lto = "thin"
+debug = true
