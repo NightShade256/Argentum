@@ -1,6 +1,6 @@
 //! Contains implementation of the Game Boy PPU.
 
-use crate::{get_bit, set_bit};
+use crate::util::{get_bit, res_bit, set_bit};
 
 /// The colour palette used in DMG mode.
 /// 0 - White
@@ -302,13 +302,13 @@ impl Ppu {
     /// Compare LY and LYC, set bits and trigger interrupts.
     fn compare_lyc(&mut self, if_reg: &mut u8) {
         if self.ly == self.lyc {
-            set_bit!(&mut self.stat, 2, true);
+            set_bit!(&mut self.stat, 2);
 
             if get_bit!(self.stat, 6) {
                 *if_reg |= 0b0000_0010;
             }
         } else {
-            set_bit!(&mut self.stat, 2, false);
+            res_bit!(&mut self.stat, 2);
         }
     }
 

@@ -1,4 +1,4 @@
-use crate::set_bit;
+use crate::util::set_bit;
 
 #[derive(Default)]
 pub struct Timer {
@@ -48,7 +48,7 @@ impl Timer {
 
                     if *cycles == 0 {
                         self.tima = self.tma;
-                        set_bit!(if_reg, 2, true);
+                        set_bit!(if_reg, 2);
                     }
                 }
             }

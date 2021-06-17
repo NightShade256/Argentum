@@ -1,19 +1,22 @@
 /// Get a bit of a number.
-#[macro_export]
 macro_rules! get_bit {
     ($number:expr, $bit:expr) => {
         (($number & (1 << $bit)) != 0)
     };
 }
 
-/// Set a bit of a number to the given value.
-#[macro_export]
+/// Set a bit of a number.
 macro_rules! set_bit {
-    ($number:expr, $bit:expr, $value:expr) => {
-        if $value {
-            *($number) |= (1 << $bit);
-        } else {
-            *($number) &= !(1 << $bit);
-        }
+    ($number:expr, $bit:expr) => {
+        *($number) |= (1 << $bit);
     };
 }
+
+/// Reset a bit of a number.
+macro_rules! res_bit {
+    ($number:expr, $bit:expr) => {
+        *($number) &= !(1 << $bit);
+    };
+}
+
+pub(crate) use {get_bit, res_bit, set_bit};
