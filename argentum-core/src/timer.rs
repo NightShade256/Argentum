@@ -1,3 +1,5 @@
+use std::hint::unreachable_unchecked;
+
 use crate::util::set_bit;
 
 #[derive(Default)]
@@ -68,7 +70,7 @@ impl Timer {
             2 => 5,
             3 => 7,
 
-            _ => unreachable!(),
+            _ => unsafe { unreachable_unchecked() },
         };
 
         let and_result = (((self.div >> bit) & 0x01) as u8) & ((self.tac >> 2) & 0x01);
@@ -93,7 +95,7 @@ impl Timer {
             0xFF06 => self.tma,
             0xFF07 => self.tac | 0xF8,
 
-            _ => unreachable!(),
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 
@@ -122,7 +124,7 @@ impl Timer {
                 self.check_falling_edge();
             }
 
-            _ => unreachable!(),
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 }
