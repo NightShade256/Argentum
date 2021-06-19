@@ -17,7 +17,7 @@ pub enum CpuState {
 }
 
 /// Implementation of the Sharp SM83 CPU.
-pub struct Cpu {
+pub(crate) struct Cpu {
     /// All the registers associated with the CPU.
     pub reg: Registers,
 

@@ -1,24 +1,28 @@
 use crate::util::set_bit;
 
 #[derive(Default)]
-pub struct Timer {
+pub(crate) struct Timer {
     /// 0xFF04 - Divider Register.
-    /// It is incremented every T cycle, but only the upper
+    ///
+    /// It is incremented every T-cycle, but only the upper
     /// 8 bits are mapped to memory, thus giving it the appearance of
-    /// being incremented every 256 T cycles.
+    /// being incremented every 256 T-cycles.
     div: u16,
 
     /// 0xFF05 - Timer Counter.
+    ///
     /// This is a configurable timer, which can be enabled or disabled
     /// and whose frequency can be changed.
     tima: u8,
 
     /// 0xFF06 - Timer Modulo.
+    ///
     /// Whenever the TIMA timer overflows, the value stored in this
     /// register is loaded into TIMA.
     tma: u8,
 
     /// 0xFF07 - Timer Control.
+    ///
     /// This register controls the frequency of TIMA, and also controls
     /// whether TIMA is incremented or not.
     tac: u8,
@@ -37,30 +41,28 @@ impl Timer {
         Self::default()
     }
 
-    /// Tick the timers by 4 T-cycles.
+    /// Tick the timers and divider by 4 T-cycles.
     pub fn tick(&mut self, if_reg: &mut u8) {
-        for _ in 0..4 {
-            if let Some(ref mut cycles) = self.tima_reload {
-                if *cycles == 0 {
-                    self.tima_reload = None;
-                } else {
-                    *cycles -= 1;
+        if let Some(ref mut cycles) = self.tima_reload {
+            if *cycles == 0 {
+                self.tima_reload = None;
+            } else {
+                *cycles -= 4;
 
-                    if *cycles == 0 {
-                        self.tima = self.tma;
-                        set_bit!(if_reg, 2);
-                    }
+                if *cycles == 0 {
+                    self.tima = self.tma;
+                    set_bit!(if_reg, 2);
                 }
             }
-
-            self.div = self.div.wrapping_add(1);
-            self.check_falling_edge();
         }
+
+        self.div = self.div.wrapping_add(4);
+        self.check_falling_edge();
     }
 
     /// Check for a falling edge on the selected bit
     /// of DIV and increment TIMA accordingly.
-    pub fn check_falling_edge(&mut self) {
+    fn check_falling_edge(&mut self) {
         let bit = match self.tac & 0x03 {
             0 => 9,
             1 => 3,
@@ -90,7 +92,7 @@ impl Timer {
             0xFF04 => (self.div >> 8) as u8,
             0xFF05 => self.tima,
             0xFF06 => self.tma,
-            0xFF07 => self.tac | 0b1111_1000,
+            0xFF07 => self.tac | 0xF8,
 
             _ => unreachable!(),
         }
@@ -117,7 +119,7 @@ impl Timer {
             }
 
             0xFF07 => {
-                self.tac = value & 0b0000_0111;
+                self.tac = value & 0x07;
                 self.check_falling_edge();
             }
 

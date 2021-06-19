@@ -5,7 +5,7 @@ use crate::{audio::Apu, cartridge::*, joypad::Joypad, ppu::Ppu, timer::Timer};
 const BOOT_ROM: &[u8] = include_bytes!("bootrom/bootix_dmg.bin");
 
 /// Implementation of the Game Boy memory bus.
-pub struct Bus {
+pub(crate) struct Bus {
     // The inserted cartridge.
     pub cartridge: Box<dyn Cartridge>,
 
