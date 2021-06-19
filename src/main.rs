@@ -1,6 +1,6 @@
 use std::{env, ffi::CString, path::PathBuf};
 
-use argentum_core::{ArgentumKey, GameBoy};
+use argentum_core::{ArgentumKey, Argentum};
 use clap::Clap;
 use fermium::prelude::*;
 
@@ -29,7 +29,7 @@ struct Opt {
 }
 
 /// Handle keyboard input.
-fn handle_keyboard_input(gb: &mut GameBoy, input: SDL_Scancode, is_pressed: bool) {
+fn handle_keyboard_input(gb: &mut Argentum, input: SDL_Scancode, is_pressed: bool) {
     let key = match input {
         SDL_SCANCODE_W => Some(ArgentumKey::Up),
         SDL_SCANCODE_A => Some(ArgentumKey::Left),
@@ -74,7 +74,7 @@ pub fn main() {
         let save_file = std::fs::read(&rom_path).ok();
 
         // Create a Game Boy instance and skip the bootrom.
-        let mut argentum = GameBoy::new(
+        let mut argentum = Argentum::new(
             &rom,
             Box::new(|buffer| {
                 while SDL_GetQueuedAudioSize(SDL_AudioDeviceID(1)) > 1024 * 4 * 2 {

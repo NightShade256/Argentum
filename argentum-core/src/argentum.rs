@@ -5,25 +5,25 @@ use crate::{bus::Bus, cpu::Cpu, joypad::ArgentumKey};
 /// T-cycles to execute per frame.
 const CYCLES_PER_FRAME: u32 = 70224;
 
-pub struct GameBoy {
+pub struct Argentum {
     bus: Bus,
     cpu: Cpu,
 }
 
-impl GameBoy {
-    /// Create a new `GameBoy` instance.
+impl Argentum {
+    /// Create a new `Argentum` instance.
     pub fn new(rom: &[u8], callback: Box<dyn Fn(&[f32])>, save_file: Option<Vec<u8>>) -> Self {
-        let mut gameboy = Self {
+        let mut argentum = Self {
             bus: Bus::new(rom, callback, save_file),
             cpu: Cpu::new(),
         };
 
-        if gameboy.bus.cgb_mode {
-            gameboy.cpu.skip_bootrom(gameboy.bus.cgb_mode);
-            gameboy.bus.skip_bootrom();
+        if argentum.bus.cgb_mode {
+            argentum.cpu.skip_bootrom(argentum.bus.cgb_mode);
+            argentum.bus.skip_bootrom();
         }
 
-        gameboy
+        argentum
     }
 
     /// Execute a frame's worth of instructions.
