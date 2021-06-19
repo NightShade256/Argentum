@@ -1,6 +1,6 @@
 //! Wrapper struct to conviniently abstract the inner workings.
 
-use crate::{bus::Bus, cpu::Cpu, joypad::GbKey};
+use crate::{bus::Bus, cpu::Cpu, joypad::ArgentumKey};
 
 /// T-cycles to execute per frame.
 const CYCLES_PER_FRAME: u32 = 70224;
@@ -52,12 +52,12 @@ impl GameBoy {
     }
 
     /// Redirects to joypad interface.
-    pub fn key_down(&mut self, key: GbKey) {
+    pub fn key_down(&mut self, key: ArgentumKey) {
         self.bus.joypad.key_down(key);
     }
 
     /// Redirects to joypad interface.
-    pub fn key_up(&mut self, key: GbKey) {
+    pub fn key_up(&mut self, key: ArgentumKey) {
         self.bus.joypad.key_up(key);
     }
 

@@ -1,34 +1,28 @@
-//! Contains implementation of the Directional Pad and Buttons.
-
-use bitflags::bitflags;
-
-bitflags! {
-    pub struct GbKey: u8 {
-        // Directional Keys.
-        const RIGHT = 0b0000_0001;
-        const LEFT = 0b0000_0010;
-        const UP = 0b0000_0100;
-        const DOWN = 0b0000_1000;
-
-        // Normal Buttons.
-        const BUTTON_A = 0b0001_0000;
-        const BUTTON_B = 0b0010_0000;
-        const SELECT = 0b0100_0000;
-        const START = 0b1000_0000;
-    }
+#[repr(u8)]
+pub enum ArgentumKey {
+    Right = 0x01,
+    Left = 0x02,
+    Up = 0x04,
+    Down = 0x08,
+    ButtonA = 0x10,
+    ButtonB = 0x20,
+    Select = 0x40,
+    Start = 0x80,
 }
 
 pub struct Joypad {
-    /// Are directional keys selected?
-    directional: bool,
+    /// 0xFF00 - JOYP register.
+    ///
+    /// Contains the current state of the buttons and DPAD.
+    joyp: u8,
 
-    /// Are normal buttons selected?
+    /// Indicates if the DPAD control bit selected.
+    dpad: bool,
+
+    /// Indicates if the button control bit selected.
     buttons: bool,
 
-    /// Current keypad state.
-    state: GbKey,
-
-    /// Should request joypad interrupt?
+    /// Indicates if a joypad IRQ was triggered.
     irq: bool,
 }
 
@@ -36,15 +30,15 @@ impl Joypad {
     /// Create a new `Joypad` instance.
     pub fn new() -> Self {
         Self {
-            directional: false,
+            joyp: 0x00,
+            dpad: false,
             buttons: false,
-            state: GbKey::empty(),
             irq: false,
         }
     }
 
-    /// This is a stub.
-    /// This only requests a joypad interrupt, if a button goes from hi to lo.
+    /// Request a joypad interrupt if a key previously
+    /// went from high to low.
     pub fn tick(&mut self, if_reg: &mut u8) {
         if self.irq {
             *if_reg |= 0b0001_0000;
@@ -52,47 +46,40 @@ impl Joypad {
         }
     }
 
-    /// Register the key being pressed.
+    /// Register a key being pressed.
     #[inline]
-    pub fn key_down(&mut self, key: GbKey) {
-        self.state.insert(key);
+    pub fn key_down(&mut self, key: ArgentumKey) {
+        self.joyp |= key as u8;
         self.irq = true;
     }
 
-    /// Register the key being unpressed.
+    /// Register a key being unpressed.
     #[inline]
-    pub fn key_up(&mut self, key: GbKey) {
-        self.state.remove(key);
+    pub fn key_up(&mut self, key: ArgentumKey) {
+        self.joyp &= !(key as u8);
     }
 
+    /// Read a byte from the specified address.
     pub fn read_byte(&self, _: u16) -> u8 {
-        let mut byte = 0x00;
+        let mut joyp = 0x00;
 
-        // Insert the selection bits.
-        byte |= (self.directional as u8) << 4;
-        byte |= (self.buttons as u8) << 5;
+        joyp |= (self.dpad as u8) << 4;
+        joyp |= (self.buttons as u8) << 5;
+
+        if self.dpad {
+            joyp |= (self.joyp & 0x0F) >> 0;
+        }
 
         if self.buttons {
-            byte |= (self.state.contains(GbKey::START) as u8) << 3;
-            byte |= (self.state.contains(GbKey::SELECT) as u8) << 2;
-            byte |= (self.state.contains(GbKey::BUTTON_B) as u8) << 1;
-            byte |= self.state.contains(GbKey::BUTTON_A) as u8;
+            joyp |= (self.joyp & 0xF0) >> 4;
         }
 
-        if self.directional {
-            byte |= (self.state.contains(GbKey::DOWN) as u8) << 3;
-            byte |= (self.state.contains(GbKey::UP) as u8) << 2;
-            byte |= (self.state.contains(GbKey::LEFT) as u8) << 1;
-            byte |= self.state.contains(GbKey::RIGHT) as u8;
-        }
-
-        !byte
+        !joyp
     }
 
-    /// We only care about the bits 4 and 5 since other
-    /// bits are read-only or are not used.
+    /// Write a byte to the specified address.
     pub fn write_byte(&mut self, _: u16, value: u8) {
-        self.directional = (value & 0x10) == 0;
+        self.dpad = (value & 0x10) == 0;
         self.buttons = (value & 0x20) == 0;
     }
 }

@@ -1,6 +1,6 @@
 use std::{env, ffi::CString, path::PathBuf};
 
-use argentum_core::{GameBoy, GbKey};
+use argentum_core::{ArgentumKey, GameBoy};
 use clap::Clap;
 use fermium::prelude::*;
 
@@ -31,14 +31,14 @@ struct Opt {
 /// Handle keyboard input.
 fn handle_keyboard_input(gb: &mut GameBoy, input: SDL_Scancode, is_pressed: bool) {
     let key = match input {
-        SDL_SCANCODE_W => Some(GbKey::UP),
-        SDL_SCANCODE_A => Some(GbKey::LEFT),
-        SDL_SCANCODE_S => Some(GbKey::DOWN),
-        SDL_SCANCODE_D => Some(GbKey::RIGHT),
-        SDL_SCANCODE_RETURN => Some(GbKey::START),
-        SDL_SCANCODE_SPACE => Some(GbKey::SELECT),
-        SDL_SCANCODE_Z => Some(GbKey::BUTTON_A),
-        SDL_SCANCODE_X => Some(GbKey::BUTTON_B),
+        SDL_SCANCODE_W => Some(ArgentumKey::Up),
+        SDL_SCANCODE_A => Some(ArgentumKey::Left),
+        SDL_SCANCODE_S => Some(ArgentumKey::Down),
+        SDL_SCANCODE_D => Some(ArgentumKey::Right),
+        SDL_SCANCODE_RETURN => Some(ArgentumKey::Start),
+        SDL_SCANCODE_SPACE => Some(ArgentumKey::Select),
+        SDL_SCANCODE_Z => Some(ArgentumKey::ButtonA),
+        SDL_SCANCODE_X => Some(ArgentumKey::ButtonA),
 
         _ => None,
     };

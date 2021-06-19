@@ -9,4 +9,4 @@ mod timer;
 mod util;
 
 pub use gameboy::GameBoy;
-pub use joypad::GbKey;
+pub use joypad::ArgentumKey;
