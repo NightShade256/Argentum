@@ -60,8 +60,7 @@ impl Timer {
         self.check_falling_edge();
     }
 
-    /// Check for a falling edge on the selected bit
-    /// of DIV and increment TIMA accordingly.
+    /// Check for a falling edge on the selected bit of DIV.
     fn check_falling_edge(&mut self) {
         let bit = match self.tac & 0x03 {
             0 => 9,

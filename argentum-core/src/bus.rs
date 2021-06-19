@@ -17,7 +17,7 @@ pub(crate) struct Bus {
 
     /// The Game Boy timer apparatus.
     /// DIV, TIMA and co.
-    pub timers: Timer,
+    pub timer: Timer,
 
     /// The Game Boy PPU.
     /// Contains VRAM, OAM RAM and drawing logic.
@@ -110,7 +110,7 @@ impl Bus {
             cartridge,
             work_ram: Box::new([0; 0x8000]),
             high_ram: Box::new([0; 0x7F]),
-            timers: Timer::new(),
+            timer: Timer::new(),
             ppu: Ppu::new(cgb_mode),
             apu: Apu::new(callback),
             joypad: Joypad::new(),
@@ -173,7 +173,7 @@ impl Bus {
             0xFF00 => self.joypad.read_byte(addr),
 
             // DIV, TIMA and co.
-            0xFF04..=0xFF07 => self.timers.read_byte(addr),
+            0xFF04..=0xFF07 => self.timer.read_byte(addr),
 
             // IF register.
             0xFF0F => self.if_reg,
@@ -262,7 +262,7 @@ impl Bus {
             0xFF00 => self.joypad.write_byte(addr, value),
 
             // DIV, TIMA and co.
-            0xFF04..=0xFF07 => self.timers.write_byte(addr, value),
+            0xFF04..=0xFF07 => self.timer.write_byte(addr, value),
 
             // IF register.
             0xFF0F => self.if_reg = value,
@@ -392,7 +392,7 @@ impl Bus {
     pub fn tick(&mut self) {
         let cycles = 4 >> (self.is_double_speed() as u8);
 
-        self.timers.tick(&mut self.if_reg);
+        self.timer.tick(&mut self.if_reg);
         self.joypad.tick(&mut self.if_reg);
 
         self.apu.tick(cycles);
