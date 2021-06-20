@@ -139,10 +139,10 @@ pub(crate) struct Ppu {
     /// Total cycles ticked under the current mode.
     total_cycles: u32,
 
-    /// RGBA32 framebuffer, this is the back buffer.
+    /// RGB24 framebuffer, this is the back buffer.
     back_framebuffer: Box<[u8; 160 * 144 * 3]>,
 
-    /// RGBA32 framebuffer, this is the front buffer.
+    /// RGB24 framebuffer, this is the front buffer.
     pub front_framebuffer: Box<[u8; 160 * 144 * 3]>,
 
     /// Shared reference to IF register.
@@ -411,18 +411,6 @@ impl Ppu {
         self.back_framebuffer[offset + 2] = (colour & 0x0000FF) as u8;
     }
 
-    /// Get a pixel in the framebuffer at the given `x` and `y`
-    /// coordinates.
-    fn get_pixel(&self, x: u8, y: u8) -> u32 {
-        let offset = (((y as usize) << 5) * 15) + (x as usize * 3);
-
-        let r = self.back_framebuffer[offset];
-        let g = self.back_framebuffer[offset + 1];
-        let b = self.back_framebuffer[offset + 2];
-
-        ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)
-    }
-
     /// Scale the CGB 5 bit RGB to standard 8 bit RGB.
     /// Colour Correction Algorithm taken from Byuu's (Near) blog.
     /// https://near.sh/articles/video/color-emulation
@@ -551,6 +539,9 @@ impl Ppu {
                 let pixel_colour =
                     (((msb >> (7 - tile_x)) & 0x01) << 1) | ((lsb >> (7 - tile_x)) & 0x01);
 
+                // Store the BG colour, and priority bit for later use.
+                self.bgd_line[x as usize] = (pixel_colour, false);
+
                 // Extract the actual pixel colour.
                 let actual_pixel_colour =
                     DMG_MODE_PALETTE[((self.bgp >> (pixel_colour << 1)) & 0x03) as usize];
@@ -604,7 +595,7 @@ impl Ppu {
             return;
         }
 
-        // If the 2nd bit of LCDC is reset the sprite's size is taken to
+        // If the 2nd bit of LCDC is zero the sprite's size is taken to
         // be 8 x 8 else it's 8 x 16.
         let sprite_size = if get_bit!(self.lcdc, 2) { 16 } else { 8 };
 
@@ -678,27 +669,29 @@ impl Ppu {
             sprites.reverse();
         }
 
-        // Render the sprites.
         for (_, sprite) in sprites {
             // Extract sprite attributes.
-            let attributes = sprite.flags;
+            let sprite_attr = sprite.flags;
 
             // Is the sprite flipped over the Y axis.
-            let y_flip = (attributes & 0x40) != 0;
+            let y_flip = get_bit!(sprite_attr, 6);
 
             // Is the sprite flipped over the X axis.
-            let x_flip = (attributes & 0x20) != 0;
+            let x_flip = get_bit!(sprite_attr, 5);
 
-            // The palette used to render the sprite.
-            let palette = if (attributes & 0x10) != 0 {
+            // The palette used to render the sprite. (DMG)
+            let palette = if get_bit!(sprite_attr, 4) {
                 self.obp1
             } else {
                 self.obp0
             };
 
-            let colour_palette = (attributes & 0b111) as usize;
+            // The palette used to render the sprite. (CGB)
+            let colour_palette = (sprite_attr & 0x07) as usize;
 
-            let vram_offset = if (attributes & 0b1000) != 0 && self.cgb_mode {
+            // The VRAM bank to use for getting the sprite tile in
+            // CGB mode.
+            let vram_offset = if self.cgb_mode && get_bit!(sprite_attr, 3) {
                 0x2000
             } else {
                 0x0000
@@ -707,7 +700,7 @@ impl Ppu {
             // Should the sprite be drawn over the background layer.
             // If this is false, the sprite will only be drawn
             // if the colour of BG is NOT 1-3.
-            let sprite_over_bg = (attributes & 0x80) == 0;
+            let sprite_over_bg = !get_bit!(sprite_attr, 7);
 
             // The row in the tile of the sprite.
             let tile_y = if y_flip {
@@ -717,11 +710,12 @@ impl Ppu {
             };
 
             // The address of the sprite tile.
-            let address = (((sprite.tile_number as u16) << 4) + ((tile_y as u16) << 1)) as usize;
+            let tile_address =
+                (((sprite.tile_number as u16) << 4) + ((tile_y as u16) << 1)) as usize;
 
             // Extract the colour data pertaining to the row.
-            let lsb = self.vram[address + vram_offset];
-            let msb = self.vram[address + vram_offset + 1];
+            let lsb = self.vram[tile_address + vram_offset];
+            let msb = self.vram[tile_address + vram_offset + 1];
 
             for x in 0..8 {
                 let actual_x = sprite.x.wrapping_add(x);
@@ -735,7 +729,7 @@ impl Ppu {
                         ((msb >> (7 - x) & 0x01) << 1) | (lsb >> (7 - x) & 0x01)
                     };
 
-                    // Extract the actual RGBA colour.
+                    // Extract the actual RGB colour.
                     let colour = if self.cgb_mode {
                         let palette_offset = (colour_palette * 8) + (colour_index as usize * 2);
 
@@ -756,9 +750,7 @@ impl Ppu {
                             {
                                 self.set_pixel(actual_x, self.ly, colour);
                             }
-                        } else if sprite_over_bg
-                            || self.get_pixel(actual_x, self.ly) == DMG_MODE_PALETTE[0]
-                        {
+                        } else if sprite_over_bg || self.bgd_line[actual_x as usize].0 == 0 {
                             self.set_pixel(actual_x, self.ly, colour);
                         }
                     }
