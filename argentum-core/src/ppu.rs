@@ -136,98 +136,6 @@ pub(crate) struct Ppu {
 }
 
 impl Ppu {
-    pub fn read_byte(&self, addr: u16) -> u8 {
-        match addr {
-            0x8000..=0x9FFF => {
-                let offset = (addr - 0x8000) as usize;
-
-                if self.cgb_mode && self.vram_banked {
-                    self.vram[offset + 0x2000]
-                } else {
-                    self.vram[offset]
-                }
-            }
-
-            0xFE00..=0xFE9F => self.oam_ram[(addr - 0xFE00) as usize],
-
-            0xFF40 => self.lcdc,
-            0xFF41 => (self.stat | 0x80) | self.current_mode as u8,
-            0xFF42 => self.scy,
-            0xFF43 => self.scx,
-            0xFF44 => self.ly,
-            0xFF45 => self.lyc,
-            0xFF47 => self.bgp,
-            0xFF48 => self.obp0,
-            0xFF49 => self.obp1,
-            0xFF4A => self.wy,
-            0xFF4B => self.wx,
-            0xFF4F => self.vram_banked as u8,
-            0xFF68 => self.bcps,
-            0xFF69 => self.bgd_palettes[(self.bcps & 0b0011_1111) as usize],
-            0xFF6A => self.ocps,
-            0xFF6B => self.obj_palettes[(self.ocps & 0b0011_1111) as usize],
-
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn write_byte(&mut self, addr: u16, value: u8) {
-        match addr {
-            0x8000..=0x9FFF => {
-                let offset = (addr - 0x8000) as usize;
-
-                if self.cgb_mode && self.vram_banked {
-                    self.vram[offset + 0x2000] = value;
-                } else {
-                    self.vram[offset] = value;
-                }
-            }
-
-            0xFE00..=0xFE9F => self.oam_ram[(addr - 0xFE00) as usize] = value,
-
-            0xFF40 => self.lcdc = value,
-            0xFF41 => self.stat = value & 0x78,
-            0xFF42 => self.scy = value,
-            0xFF43 => self.scx = value,
-            0xFF44 => {}
-            0xFF45 => self.lyc = value,
-            0xFF47 => self.bgp = value,
-            0xFF48 => self.obp0 = value,
-            0xFF49 => self.obp1 = value,
-            0xFF4A => self.wy = value,
-            0xFF4B => self.wx = value,
-            0xFF4F => self.vram_banked = (value & 0b1) != 0,
-            0xFF68 => self.bcps = value,
-            0xFF69 => {
-                let index = self.bcps & 0b0011_1111;
-
-                self.bgd_palettes[index as usize] = value;
-
-                if (self.bcps & 0b1000_0000) != 0 {
-                    let new_index = index.wrapping_add(1);
-
-                    self.bcps &= 0b1100_0000;
-                    self.bcps |= new_index;
-                }
-            }
-            0xFF6A => self.ocps = value,
-            0xFF6B => {
-                let index = self.ocps & 0b0011_1111;
-
-                self.obj_palettes[index as usize] = value;
-
-                if (self.ocps & 0b1000_0000) != 0 {
-                    let new_index = index.wrapping_add(1);
-
-                    self.ocps &= 0b1100_0000;
-                    self.ocps |= new_index;
-                }
-            }
-
-            _ => unreachable!(),
-        }
-    }
-
     /// Create a new `Ppu` instance.
     pub fn new(if_reg: Rc<RefCell<u8>>, cgb_mode: bool) -> Self {
         Self {
@@ -260,52 +168,143 @@ impl Ppu {
         }
     }
 
+    /// Read a byte from the specified address.
+    pub fn read_byte(&self, addr: u16) -> u8 {
+        match addr {
+            0x8000..=0x9FFF => {
+                let offset = (addr - 0x8000) as usize;
+
+                if self.cgb_mode && self.vram_banked {
+                    self.vram[offset + 0x2000]
+                } else {
+                    self.vram[offset]
+                }
+            }
+
+            0xFE00..=0xFE9F => self.oam_ram[(addr - 0xFE00) as usize],
+
+            0xFF40 => self.lcdc,
+            0xFF41 => (self.stat | 0x80) | self.current_mode as u8,
+            0xFF42 => self.scy,
+            0xFF43 => self.scx,
+            0xFF44 => self.ly,
+            0xFF45 => self.lyc,
+            0xFF47 => self.bgp,
+            0xFF48 => self.obp0,
+            0xFF49 => self.obp1,
+            0xFF4A => self.wy,
+            0xFF4B => self.wx,
+
+            0xFF4F => self.vram_banked as u8,
+            0xFF68 => self.bcps,
+            0xFF69 => self.bgd_palettes[(self.bcps & 0b0011_1111) as usize],
+            0xFF6A => self.ocps,
+            0xFF6B => self.obj_palettes[(self.ocps & 0b0011_1111) as usize],
+
+            _ => unreachable!(),
+        }
+    }
+
+    /// Write a byte to the specified address.
+    pub fn write_byte(&mut self, addr: u16, value: u8) {
+        match addr {
+            0x8000..=0x9FFF => {
+                let offset = (addr - 0x8000) as usize;
+
+                if self.cgb_mode && self.vram_banked {
+                    self.vram[offset + 0x2000] = value;
+                } else {
+                    self.vram[offset] = value;
+                }
+            }
+
+            0xFE00..=0xFE9F => self.oam_ram[(addr - 0xFE00) as usize] = value,
+
+            0xFF40 => self.lcdc = value,
+            0xFF41 => self.stat = value & 0x78,
+            0xFF42 => self.scy = value,
+            0xFF43 => self.scx = value,
+            0xFF44 => {}
+            0xFF45 => self.lyc = value,
+            0xFF47 => self.bgp = value,
+            0xFF48 => self.obp0 = value,
+            0xFF49 => self.obp1 = value,
+            0xFF4A => self.wy = value,
+            0xFF4B => self.wx = value,
+
+            0xFF4F => self.vram_banked = (value & 0b1) != 0,
+            0xFF68 => self.bcps = value,
+            0xFF69 => {
+                let index = self.bcps & 0b0011_1111;
+
+                self.bgd_palettes[index as usize] = value;
+
+                if (self.bcps & 0b1000_0000) != 0 {
+                    let new_index = index.wrapping_add(1);
+
+                    self.bcps &= 0b1100_0000;
+                    self.bcps |= new_index;
+                }
+            }
+            0xFF6A => self.ocps = value,
+            0xFF6B => {
+                let index = self.ocps & 0b0011_1111;
+
+                self.obj_palettes[index as usize] = value;
+
+                if (self.ocps & 0b1000_0000) != 0 {
+                    let new_index = index.wrapping_add(1);
+
+                    self.ocps &= 0b1100_0000;
+                    self.ocps |= new_index;
+                }
+            }
+
+            _ => unreachable!(),
+        }
+    }
+
     /// Change the PPU's current mode.
     fn change_mode(&mut self, mode: PpuMode) {
-        match &mode {
-            PpuMode::HBlank => {
-                self.current_mode = mode;
+        self.current_mode = mode;
 
-                // Render the scanline.
+        match mode {
+            PpuMode::HBlank => {
                 self.render_scanline();
 
-                // Request STAT interrupt if
-                // the appropriate bit is set.
+                // Request STAT interrupt if HBlank bit
+                // in LCD STAT is set.
                 if get_bit!(self.stat, 3) {
                     set_bit!(self.if_reg.borrow_mut(), 1);
                 }
             }
 
             PpuMode::VBlank => {
-                self.current_mode = mode;
-
-                // Request VBlank interrupt.
+                // Request a VBlank interrupt.
                 set_bit!(self.if_reg.borrow_mut(), 0);
 
-                // Request STAT interrupt if
-                // the appropriate bit is set.
+                // Request STAT interrupt if VBlank bit
+                // in LCD STAT is set.
                 if get_bit!(self.stat, 4) {
                     set_bit!(self.if_reg.borrow_mut(), 1);
                 }
             }
 
             PpuMode::OamSearch => {
-                self.current_mode = mode;
-
-                // Request STAT interrupt if
-                // the appropriate bit is set.
+                // Request STAT interrupt if OamSearch bit
+                // in LCD STAT is set.
                 if get_bit!(self.stat, 5) {
                     set_bit!(self.if_reg.borrow_mut(), 1);
                 }
             }
 
-            PpuMode::Drawing => {
-                self.current_mode = mode;
-            }
+            _ => {}
         }
     }
 
-    /// Compare LY and LYC, set bits and trigger interrupts.
+    /// Compare LY and LYC and if they are equal,
+    /// set coincidence bit in LCD STAT and request
+    /// a STAT interrupt (if enabled).
     fn compare_lyc(&mut self) {
         if self.ly == self.lyc {
             set_bit!(&mut self.stat, 2);
