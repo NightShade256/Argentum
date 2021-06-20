@@ -30,73 +30,73 @@ struct Sprite {
 /// Enumerates all the different modes the PPU can be in.
 #[derive(Clone, Copy)]
 #[repr(u8)]
-pub enum PpuModes {
+pub enum PpuMode {
     HBlank = 0,
-    VBlank,
-    OamSearch,
-    Drawing,
+    VBlank = 1,
+    OamSearch = 2,
+    Drawing = 3,
 }
 
-/// Implementation of the Game Boy PPU.
-pub struct Ppu {
+pub(crate) struct Ppu {
     /// 8 KiB of Video RAM
+    ///
     /// Mapped to 0x8000 to 0x9FFF.
-    /// Capacity for two complete banks, but only 1 used
+    /// Capacity for two complete banks, but only 1 is used
     /// in DMG mode.
     vram: [u8; 0x4000],
 
     /// 160 B of OAM RAM.
+    ///
     /// Mapped to 0xFE00 to 0xFE9F.
+    /// Space for 40 sprite entries.
     oam_ram: [u8; 0xA0],
 
-    /// The current scanline, that is being rendered.
-    /// Read-only indicator to the ROM.
-    ly: u8,
-
-    /// LY Compare register. STAT interrupt is triggered
-    /// if LYC = LY.
-    lyc: u8,
-
-    /// The LCD control register. Controls all basic aspects
-    /// of rendering.
+    /// 0xFF40 - LCD Control.
+    ///
+    /// Controls pretty much all aspects of rendering.
     lcdc: u8,
 
-    /// LCD status register. Conveys which mode PPU is in, plus
-    /// has some interrupt controls.
+    /// 0xFF41 - LCD Status.
+    ///
+    /// Contains control bits for the STAT interrupt, and
+    /// indicates the current PPU mode to the game ROM.
     stat: u8,
 
-    /// Controls vertical scroll (Y axis).
+    /// 0xFF42 - Scroll Y.
     scy: u8,
 
-    /// Controls horizontal scroll (X axis).
+    /// 0xFF43 - Scroll X.
     scx: u8,
 
-    /// Background palette data set by the ROM,
-    /// Only used in DMG mode.
+    /// 0xFF44 - LY.
+    ///
+    /// The current scanline, that is being rendered.
+    /// Read only indicator to the game ROM.
+    ly: u8,
+
+    /// 0xFF45 - LY Compare.
+    ///
+    /// LYC is permanently compared with LY.
+    /// STAT interrupt is triggered if LYC = LY.
+    lyc: u8,
+
+    /// 0xFF47 - Background Palette Data (DMG Mode Only).
     bgp: u8,
 
-    /// Object (sprite) palette 0,
-    /// Only used in DMG mode.
+    /// 0xFF48 - Sprite Palette 0 (DMG Mode Only).
     obp0: u8,
 
-    /// Object (sprite) palette 1,
-    /// Only used in DMG mode.
+    /// 0xFF49 - Sprite Palette 1 (DMG Mode Only).
     obp1: u8,
 
-    /// Window X coordinate - 7.
-    /// Note: This is an absolute coordinate.
-    wx: u8,
-
-    /// Window Y coordinate.
-    /// Note: This is an absolute coordinate.
+    /// 0xFF4A - Window Y coordinate.
     wy: u8,
 
-    /// Internal window line counter.
-    /// If a window is enabled, disabled and then enabled again
-    /// the window rendering will continue off from the line that it
-    /// last rendered.
-    /// This is reset after every frame.
-    window_line: u8,
+    /// 0xFF4B - Window X coordinate - 7.
+    wx: u8,
+
+    /// Internal GB window line counter.
+    window_line_counter: u8,
 
     /// Indicates whether we should emulate the DMG or the
     /// CGB.
@@ -120,7 +120,7 @@ pub struct Ppu {
     vram_banked: bool,
 
     /// The current mode the PPU is in.
-    current_mode: PpuModes,
+    current_mode: PpuMode,
 
     /// Total cycles ticked under the current mode.
     total_cycles: u32,
@@ -251,8 +251,8 @@ impl Ppu {
             obj_palettes: Box::new([0; 0x40]),
             line_priorities: Box::new([(0, false); 160]),
             vram_banked: false,
-            window_line: 0,
-            current_mode: PpuModes::OamSearch,
+            window_line_counter: 0,
+            current_mode: PpuMode::OamSearch,
             total_cycles: 0,
             back_framebuffer: Box::new([0; 160 * 144 * 3]),
             front_framebuffer: Box::new([0; 160 * 144 * 3]),
@@ -261,9 +261,9 @@ impl Ppu {
     }
 
     /// Change the PPU's current mode.
-    fn change_mode(&mut self, mode: PpuModes) {
+    fn change_mode(&mut self, mode: PpuMode) {
         match &mode {
-            PpuModes::HBlank => {
+            PpuMode::HBlank => {
                 self.current_mode = mode;
 
                 // Render the scanline.
@@ -276,7 +276,7 @@ impl Ppu {
                 }
             }
 
-            PpuModes::VBlank => {
+            PpuMode::VBlank => {
                 self.current_mode = mode;
 
                 // Request VBlank interrupt.
@@ -289,7 +289,7 @@ impl Ppu {
                 }
             }
 
-            PpuModes::OamSearch => {
+            PpuMode::OamSearch => {
                 self.current_mode = mode;
 
                 // Request STAT interrupt if
@@ -299,7 +299,7 @@ impl Ppu {
                 }
             }
 
-            PpuModes::Drawing => {
+            PpuMode::Drawing => {
                 self.current_mode = mode;
             }
         }
@@ -339,35 +339,35 @@ impl Ppu {
         // They vary depending upon the number of sprites
         // on the screen, if the window is being drawn etc..
         match self.current_mode {
-            PpuModes::OamSearch if self.total_cycles >= 80 => {
+            PpuMode::OamSearch if self.total_cycles >= 80 => {
                 self.total_cycles -= 80;
-                self.change_mode(PpuModes::Drawing);
+                self.change_mode(PpuMode::Drawing);
             }
 
-            PpuModes::Drawing if self.total_cycles >= 172 => {
+            PpuMode::Drawing if self.total_cycles >= 172 => {
                 self.total_cycles -= 172;
-                self.change_mode(PpuModes::HBlank);
+                self.change_mode(PpuMode::HBlank);
 
                 if self.cgb_mode {
                     entered_hblank = true;
                 }
             }
 
-            PpuModes::HBlank if self.total_cycles >= 204 => {
+            PpuMode::HBlank if self.total_cycles >= 204 => {
                 self.total_cycles -= 204;
                 self.ly += 1;
 
                 // LY 0x90 (144) signals end of one complete frame.
                 if self.ly == 0x90 {
-                    self.change_mode(PpuModes::VBlank);
+                    self.change_mode(PpuMode::VBlank);
                 } else {
-                    self.change_mode(PpuModes::OamSearch);
+                    self.change_mode(PpuMode::OamSearch);
                 }
 
                 self.compare_lyc();
             }
 
-            PpuModes::VBlank if self.total_cycles >= 456 => {
+            PpuMode::VBlank if self.total_cycles >= 456 => {
                 self.total_cycles -= 456;
                 self.ly += 1;
 
@@ -379,7 +379,7 @@ impl Ppu {
                         .copy_from_slice(self.back_framebuffer.as_ref());
 
                     self.ly = 0;
-                    self.change_mode(PpuModes::OamSearch);
+                    self.change_mode(PpuMode::OamSearch);
                 }
 
                 self.compare_lyc();
@@ -450,7 +450,7 @@ impl Ppu {
 
         // If this is a new frame, reset the window line counter.
         if self.ly == 0 {
-            self.window_line = 0;
+            self.window_line_counter = 0;
         }
 
         // The tile map that is going to be used to render
@@ -485,7 +485,7 @@ impl Ppu {
             let (map_x, map_y, tile_map) =
                 if get_bit!(self.lcdc, 5) && self.wy <= self.ly && self.wx <= x + 7 {
                     let map_x = x.wrapping_add(7).wrapping_sub(self.wx);
-                    let map_y = self.window_line;
+                    let map_y = self.window_line_counter;
 
                     increment_window_counter = true;
 
@@ -594,7 +594,7 @@ impl Ppu {
             }
         }
 
-        self.window_line += increment_window_counter as u8;
+        self.window_line_counter += increment_window_counter as u8;
     }
 
     /// Render the sprites present on this scanline.
