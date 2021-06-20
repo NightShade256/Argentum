@@ -246,7 +246,7 @@ impl Ppu {
             0xFF4A => self.wy = value,
             0xFF4B => self.wx = value,
 
-            0xFF4F => self.vram_banked = get_bit!(value, 1),
+            0xFF4F => self.vram_banked = get_bit!(value, 0),
             0xFF68 => self.bcps = value & 0xBF,
             0xFF69 => {
                 let index = self.bcps & 0x3F;
@@ -388,6 +388,7 @@ impl Ppu {
                         .copy_from_slice(self.back_framebuffer.as_ref());
 
                     self.ly = 0;
+                    self.window_line_counter = 0;
                     self.change_mode(PpuMode::OamSearch);
                 }
 
@@ -447,31 +448,22 @@ impl Ppu {
         scaled
     }
 
-    // Render the background map with scroll OR the window map for this scanline.
+    /// Render the background map and the window map for this scanline.
     fn render_background(&mut self) {
-        // The 0th bit of the LCDC when reset disables all forms
+        // The 0th bit of the LCDC in DMG mode when zero disables all forms
         // of background and window rendering.
-        // (it also overrides the window enable bit)
-        // Note: This does not affect sprite rendering.
         if !get_bit!(self.lcdc, 0) && !self.cgb_mode {
             return;
         }
 
-        // If this is a new frame, reset the window line counter.
-        if self.ly == 0 {
-            self.window_line_counter = 0;
-        }
-
-        // The tile map that is going to be used to render
-        // the window.
+        // The window tile map that is to be rendered.
         let win_map = if get_bit!(self.lcdc, 6) {
             0x1C00
         } else {
             0x1800
         };
 
-        // The tile map that is going to be used to render
-        // the background.
+        // The background tile map that is to be rendered.
         let bgd_map = if get_bit!(self.lcdc, 3) {
             0x1C00
         } else {
@@ -481,16 +473,18 @@ impl Ppu {
         // The tile data that is going to be used for rendering
         // the above tile maps.
         let tile_data = if get_bit!(self.lcdc, 4) {
-            0x0000
+            0x0000u16
         } else {
-            0x1000
+            0x1000u16
         };
 
-        // If the window is enabled this line, we increment the internal line counter.
+        // If the window is enabled this line, we increment
+        // the internal line counter.
         let mut increment_window_counter = false;
 
         for x in 0u8..160u8 {
-            // Extract the absolute X and Y coordinates of the pixel in the respective 256 x 256 tile map.
+            // Extract the absolute X and Y coordinates of the pixel in
+            // the respective 256 x 256 tile map.
             let (map_x, map_y, tile_map) =
                 if get_bit!(self.lcdc, 5) && self.wy <= self.ly && self.wx <= x + 7 {
                     let map_x = x.wrapping_add(7).wrapping_sub(self.wx);
@@ -508,39 +502,40 @@ impl Ppu {
 
             // Extract the X and Y coordinates of the pixel inside the
             // respective tile.
-            let tile_x = map_x & 0x07;
-            let tile_y = map_y & 0x07;
+            let mut tile_x = map_x & 0x07;
+            let mut tile_y = map_y & 0x07;
 
-            // Extract the the tile number.
-            // Each tile is 8 x 8 pixels, and
-            // the background or window map is 32 by 32 tiles in size.
-            // We first extract the index of the tile number.
-            // The map has a range of 0x400 bytes and each row in the map has
-            // 0x20 bytes.
+            // Calculate the index for the tile number.
             let tile_number_index =
                 tile_map + (((map_y as u16 >> 3) << 5) & 0x3FF) + ((map_x as u16 >> 3) & 0x1F);
 
+            // Extract the tile number.
             let tile_number = self.vram[tile_number_index as usize];
 
-            let tile_y = if self.cgb_mode {
-                let bg_attributes = self.vram[tile_number_index as usize + 0x2000];
+            // Extract CGB background attributes.
+            let cgb_bgd_attrs = self.vram[tile_number_index as usize + 0x2000];
 
-                if (bg_attributes & 0b0100_0000) != 0 {
-                    7 - tile_y
-                } else {
-                    tile_y
-                }
-            } else {
-                tile_y
-            };
+            // If we are in CGB mode, check if we need to flip
+            // the tile over the Y axis.
+            if self.cgb_mode && get_bit!(cgb_bgd_attrs, 6) {
+                tile_y = 7 - tile_y;
+            }
+
+            // If we are in CGB mode, check if we need to flip
+            // the tile over the X axis.
+            if self.cgb_mode && !get_bit!(cgb_bgd_attrs, 5) {
+                tile_x = 7 - tile_x;
+            }
 
             // Extract the address of the row we are rendering in the concerned tile.
             // There are two addressing modes,
             //
             // 1. 0x8000: (TILE_NUMBER as u8 * 16) + 0x8000.
             // 2. 0x8800: (TILE_NUMBER as i8 * 16) + 0x9000.
-            let address = if tile_data == 0x0000 {
-                tile_data + ((tile_number as u16) << 4) + (tile_y << 1) as u16
+            let tile_address = if tile_data == 0x0000 {
+                tile_data
+                    .wrapping_add((tile_number as u16) << 4)
+                    .wrapping_add((tile_y << 1) as u16)
             } else {
                 tile_data
                     .wrapping_add(((tile_number as i8 as i16) as u16) << 4)
@@ -549,57 +544,52 @@ impl Ppu {
 
             if !self.cgb_mode {
                 // Extract the colour data pertaining to the row.
-                let lsb = self.vram[address];
-                let msb = self.vram[address + 1];
+                let lsb = self.vram[tile_address];
+                let msb = self.vram[tile_address + 1];
 
-                let tile_colour =
+                // Extract the colour pertaining to the pixel.
+                let pixel_colour =
                     (((msb >> (7 - tile_x)) & 0x01) << 1) | ((lsb >> (7 - tile_x)) & 0x01);
 
-                // Extract the actual pixel colour, that we are going to use.
-                let colour = DMG_MODE_PALETTE[((self.bgp >> (tile_colour << 1)) & 0x03) as usize];
+                // Extract the actual pixel colour.
+                let actual_pixel_colour =
+                    DMG_MODE_PALETTE[((self.bgp >> (pixel_colour << 1)) & 0x03) as usize];
 
-                self.set_pixel(x, self.ly, colour);
+                self.set_pixel(x, self.ly, actual_pixel_colour);
             } else {
-                // Extract the background attributes.
-                let bg_attributes = self.vram[tile_number_index as usize + 0x2000];
+                // Extract the index of the colour palette we are
+                // going to use to render the tile.
+                let palette = (cgb_bgd_attrs & 0x07) as usize;
 
-                // Extract the colour palette we are going to use to render the tile.
-                let palette = (bg_attributes & 0b111) as usize;
-
-                // Check which VRAM bank to take tile data from.
-                let bank_offset = if (bg_attributes & 0b0000_1000) != 0 {
+                // Extract which VRAM bank to take tile data from.
+                let bank_offset = if get_bit!(cgb_bgd_attrs, 3) {
                     0x2000
                 } else {
                     0x0000
                 };
 
-                let tile_x = if (bg_attributes & 0b0010_0000) != 0 {
-                    tile_x
-                } else {
-                    7 - tile_x
-                };
-
-                let priority = (bg_attributes & 0b1000_0000) != 0;
+                // Extract BG to OAM priority, and store it later for sprite
+                // rendering.
+                let bg_oam_priority = get_bit!(cgb_bgd_attrs, 7);
 
                 // Extract the colour data pertaining to the row.
-                let lsb = self.vram[address + bank_offset];
-                let msb = self.vram[address + bank_offset + 1];
+                let lsb = self.vram[tile_address + bank_offset];
+                let msb = self.vram[tile_address + bank_offset + 1];
 
-                // The colour of the pixel we are rendering.
-                let tile_colour = (((msb >> tile_x) & 0x01) << 1) | ((lsb >> tile_x) & 0x01);
+                // Extract the colour pertaining to the pixel.
+                let pixel_colour = (((msb >> tile_x) & 0x01) << 1) | ((lsb >> tile_x) & 0x01);
 
-                self.bgd_line[x as usize] = (tile_colour, priority);
+                // Store the BG colour, and priority bit for later use.
+                self.bgd_line[x as usize] = (pixel_colour, bg_oam_priority);
 
-                // The palette we are going to use.
-                let palette_offset = (palette * 8) + (tile_colour as usize * 2);
+                // The offset to the palette we are going to use.
+                let palette_offset = (palette << 3) + ((pixel_colour as usize) << 1);
 
-                let cgb_colour = ((self.bgd_palettes[palette_offset + 1] as u16) << 8)
+                // Extract the actual pixel colour.
+                let actual_colour = ((self.bgd_palettes[palette_offset + 1] as u16) << 8)
                     | (self.bgd_palettes[palette_offset] as u16);
 
-                // Scale 5 bit RGB to 8 bit RGB.
-                let colour = self.scale_rgb(cgb_colour);
-
-                self.set_pixel(x, self.ly, colour);
+                self.set_pixel(x, self.ly, self.scale_rgb(actual_colour));
             }
         }
 
