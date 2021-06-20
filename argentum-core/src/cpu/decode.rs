@@ -284,11 +284,7 @@ impl Cpu {
                 self.reg.pc = vec;
             }
 
-            _ => log::warn!(
-                "Invalid operation code {:#04X} encountered at PC={:#06X}.",
-                opcode,
-                self.reg.pc
-            ),
+            _ => {}
         }
     }
 }

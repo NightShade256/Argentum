@@ -46,15 +46,6 @@ impl Cpu {
 
                 bus.speed_reg = 0b1111_1110;
             }
-
-            log::info!(
-                "Performed speed switch to {}.",
-                if self.is_double_speed {
-                    "double speed"
-                } else {
-                    "normal speed"
-                }
-            );
         }
 
         self.reg.pc += 1;

@@ -1,4 +1,4 @@
-use std::hint::unreachable_unchecked;
+use std::{cell::RefCell, hint::unreachable_unchecked, rc::Rc};
 
 use crate::util::set_bit;
 
@@ -35,16 +35,22 @@ pub(crate) struct Timer {
 
     /// The T-cycles remaining for TIMA reload to occur, if any.
     tima_reload: Option<u8>,
+
+    /// Shared reference to IF register.
+    if_reg: Rc<RefCell<u8>>,
 }
 
 impl Timer {
     /// Create a new `Timer` instance.
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(if_reg: Rc<RefCell<u8>>) -> Self {
+        Self {
+            if_reg,
+            ..Self::default()
+        }
     }
 
     /// Tick the timers and divider by 4 T-cycles.
-    pub fn tick(&mut self, if_reg: &mut u8) {
+    pub fn tick(&mut self) {
         if let Some(ref mut cycles) = self.tima_reload {
             if *cycles == 0 {
                 self.tima_reload = None;
@@ -53,7 +59,7 @@ impl Timer {
 
                 if *cycles == 0 {
                     self.tima = self.tma;
-                    set_bit!(if_reg, 2);
+                    set_bit!(self.if_reg.borrow_mut(), 2);
                 }
             }
         }

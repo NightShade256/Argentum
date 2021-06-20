@@ -45,8 +45,6 @@ impl Argentum {
             return;
         }
 
-        log::info!("Skipping bootrom, and running game ROM.");
-
         self.cpu.skip_bootrom(self.bus.cgb_mode);
         self.bus.skip_bootrom();
     }

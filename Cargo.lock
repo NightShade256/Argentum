@@ -24,7 +24,6 @@ name = "argentum-core"
 version = "0.3.2"
 dependencies = [
  "bitflags",
- "log",
 ]
 
 [[package]]

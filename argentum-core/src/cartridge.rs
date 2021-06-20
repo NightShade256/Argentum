@@ -187,7 +187,7 @@ impl Cartridge for Mbc1 {
                 self.ram[addr] = value;
             }
 
-            _ => log::warn!("Write to external RAM occurred without first enabling it."),
+            _ => {}
         }
     }
 
@@ -235,11 +235,8 @@ impl Mbc3 {
 
         if !ram.is_empty() {
             if let Some(ram_save) = save_file {
-                if ram.len() != ram_save.len() {
-                    log::warn!("Found a save file, but it is incompatible!");
-                } else {
+                if ram.len() == ram_save.len() {
                     ram.copy_from_slice(&ram_save);
-                    log::info!("Loaded a save file that was found in the same directory.");
                 }
             }
         }

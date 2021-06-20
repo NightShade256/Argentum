@@ -1,3 +1,7 @@
+use std::{cell::RefCell, rc::Rc};
+
+use crate::util::set_bit;
+
 #[repr(u8)]
 pub enum ArgentumKey {
     Right = 0x01,
@@ -11,10 +15,8 @@ pub enum ArgentumKey {
 }
 
 pub struct Joypad {
-    /// 0xFF00 - JOYP register.
-    ///
     /// Contains the current state of the buttons and DPAD.
-    joyp: u8,
+    joypad_state: u8,
 
     /// Indicates if the DPAD control bit selected.
     dpad: bool,
@@ -22,41 +24,30 @@ pub struct Joypad {
     /// Indicates if the button control bit selected.
     buttons: bool,
 
-    /// Indicates if a joypad IRQ was triggered.
-    irq: bool,
+    /// Shared reference to IF register.
+    if_reg: Rc<RefCell<u8>>,
 }
 
 impl Joypad {
     /// Create a new `Joypad` instance.
-    pub fn new() -> Self {
+    pub fn new(if_reg: Rc<RefCell<u8>>) -> Self {
         Self {
-            joyp: 0x00,
+            joypad_state: 0x00,
             dpad: false,
             buttons: false,
-            irq: false,
-        }
-    }
-
-    /// Request a joypad interrupt if a key previously
-    /// went from high to low.
-    pub fn tick(&mut self, if_reg: &mut u8) {
-        if self.irq {
-            *if_reg |= 0b0001_0000;
-            self.irq = false;
+            if_reg,
         }
     }
 
     /// Register a key being pressed.
-    #[inline]
     pub fn key_down(&mut self, key: ArgentumKey) {
-        self.joyp |= key as u8;
-        self.irq = true;
+        self.joypad_state |= key as u8;
+        set_bit!(self.if_reg.borrow_mut(), 4);
     }
 
     /// Register a key being unpressed.
-    #[inline]
     pub fn key_up(&mut self, key: ArgentumKey) {
-        self.joyp &= !(key as u8);
+        self.joypad_state &= !(key as u8);
     }
 
     /// Read a byte from the specified address.
@@ -67,11 +58,11 @@ impl Joypad {
         joyp |= (self.buttons as u8) << 5;
 
         if self.dpad {
-            joyp |= (self.joyp & 0x0F) >> 0;
+            joyp |= (self.joypad_state & 0x0F) >> 0;
         }
 
         if self.buttons {
-            joyp |= (self.joyp & 0xF0) >> 4;
+            joyp |= (self.joypad_state & 0xF0) >> 4;
         }
 
         !joyp

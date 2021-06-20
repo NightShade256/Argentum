@@ -7,7 +7,10 @@ mod registers;
 use std::fmt::{Display, Formatter, Result};
 
 use self::registers::Registers;
-use crate::bus::Bus;
+use crate::{
+    bus::Bus,
+    util::{get_bit, res_bit},
+};
 
 /// Enumerates all the states the CPU can be in.
 #[derive(PartialEq)]
@@ -220,7 +223,7 @@ impl Cpu {
     /// Handle all pending interrupts.
     /// Only one interrupt is serviced at one time.
     pub fn handle_interrupts(&mut self, bus: &mut Bus) {
-        let interrupts = bus.ie_reg & bus.if_reg;
+        let interrupts = bus.ie_reg & *bus.if_reg.borrow();
 
         // If there are pending interrupts, CPU should be
         // back up and running.
@@ -235,9 +238,9 @@ impl Cpu {
 
         if interrupts != 0 {
             for i in 0..5 {
-                if (bus.ie_reg & (1 << i) != 0) && (bus.if_reg & (1 << i) != 0) {
+                if get_bit!(bus.ie_reg, i) && get_bit!(*bus.if_reg.borrow(), i) {
                     // Disable the interrupt in IF.
-                    bus.if_reg &= !(1 << i);
+                    res_bit!(bus.if_reg.borrow_mut(), i);
 
                     // Disable IME.
                     self.ime = false;
