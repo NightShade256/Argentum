@@ -98,25 +98,39 @@ pub(crate) struct Ppu {
     /// Internal GB window line counter.
     window_line_counter: u8,
 
-    /// Indicates whether we should emulate the DMG or the
-    /// CGB.
+    /// Indicates whether we should emulate DMG or
+    /// CGB behaviour.
     cgb_mode: bool,
 
-    /// Specifies the index of byte curently selected in BCPD.
+    /// 0xFF68 - BCPS.
+    ///
+    /// Specifies the index of the byte curently
+    /// selected in BCPD register.
     bcps: u8,
 
-    /// Background colour palette memory.
-    bgd_palettes: Box<[u8; 0x40]>,
+    /// 0xFF69 - BCPD
+    ///
+    /// Background Colour Palettes (CGB Mode Only).
+    bgd_palettes: [u8; 0x40],
 
-    /// Specifies the index of byte curently selected in BCPD.
+    /// 0xFF6A - BCPS.
+    ///
+    /// Specifies the index of the byte curently
+    /// selected in BCPD register.
     ocps: u8,
 
-    /// Background colour palette memory.
-    obj_palettes: Box<[u8; 0x40]>,
+    /// 0xFF69 - OCPD
+    ///
+    /// Sprite Colour Palettes (CGB Mode Only).
+    obj_palettes: [u8; 0x40],
 
-    line_priorities: Box<[(u8, bool); 160]>,
+    /// State of background rendering for the
+    /// current LY position.
+    bgd_line: [(u8, bool); 160],
 
-    /// Is the VRAM currently banked to 2nd bank.
+    /// 0xFF4F - VBK
+    ///
+    /// Indicates whether VRAM is switched to the 2nd bank.
     vram_banked: bool,
 
     /// The current mode the PPU is in.
@@ -139,7 +153,6 @@ impl Ppu {
     /// Create a new `Ppu` instance.
     pub fn new(if_reg: Rc<RefCell<u8>>, cgb_mode: bool) -> Self {
         Self {
-            cgb_mode,
             vram: [0; 0x4000],
             oam_ram: [0; 0xA0],
             ly: 0,
@@ -153,13 +166,14 @@ impl Ppu {
             obp1: 0xFF,
             wx: 0,
             wy: 0,
-            bcps: 0,
-            bgd_palettes: Box::new([0; 0x40]),
-            ocps: 0,
-            obj_palettes: Box::new([0; 0x40]),
-            line_priorities: Box::new([(0, false); 160]),
-            vram_banked: false,
             window_line_counter: 0,
+            cgb_mode,
+            bcps: 0,
+            bgd_palettes: [0; 0x40],
+            ocps: 0,
+            obj_palettes: [0; 0x40],
+            bgd_line: [(0, false); 160],
+            vram_banked: false,
             current_mode: PpuMode::OamSearch,
             total_cycles: 0,
             back_framebuffer: Box::new([0; 160 * 144 * 3]),
@@ -195,11 +209,11 @@ impl Ppu {
             0xFF4A => self.wy,
             0xFF4B => self.wx,
 
-            0xFF4F => self.vram_banked as u8,
-            0xFF68 => self.bcps,
-            0xFF69 => self.bgd_palettes[(self.bcps & 0b0011_1111) as usize],
-            0xFF6A => self.ocps,
-            0xFF6B => self.obj_palettes[(self.ocps & 0b0011_1111) as usize],
+            0xFF4F => (self.vram_banked as u8) | 0xFE,
+            0xFF68 => self.bcps | 0x40,
+            0xFF69 => self.bgd_palettes[(self.bcps & 0x3F) as usize],
+            0xFF6A => self.ocps | 0x40,
+            0xFF6B => self.obj_palettes[(self.ocps & 0x3F) as usize],
 
             _ => unreachable!(),
         }
@@ -232,31 +246,27 @@ impl Ppu {
             0xFF4A => self.wy = value,
             0xFF4B => self.wx = value,
 
-            0xFF4F => self.vram_banked = (value & 0b1) != 0,
-            0xFF68 => self.bcps = value,
+            0xFF4F => self.vram_banked = get_bit!(value, 1),
+            0xFF68 => self.bcps = value & 0xBF,
             0xFF69 => {
-                let index = self.bcps & 0b0011_1111;
+                let index = self.bcps & 0x3F;
 
                 self.bgd_palettes[index as usize] = value;
 
-                if (self.bcps & 0b1000_0000) != 0 {
-                    let new_index = index.wrapping_add(1);
-
-                    self.bcps &= 0b1100_0000;
-                    self.bcps |= new_index;
+                if get_bit!(self.bcps, 7) {
+                    self.bcps &= 0xC0;
+                    self.bcps |= index.wrapping_add(1);
                 }
             }
-            0xFF6A => self.ocps = value,
+            0xFF6A => self.ocps = value & 0xBF,
             0xFF6B => {
-                let index = self.ocps & 0b0011_1111;
+                let index = self.ocps & 0x3F;
 
                 self.obj_palettes[index as usize] = value;
 
-                if (self.ocps & 0b1000_0000) != 0 {
-                    let new_index = index.wrapping_add(1);
-
-                    self.ocps &= 0b1100_0000;
-                    self.ocps |= new_index;
+                if get_bit!(self.ocps, 7) {
+                    self.ocps &= 0xC0;
+                    self.ocps |= index.wrapping_add(1);
                 }
             }
 
@@ -578,7 +588,7 @@ impl Ppu {
                 // The colour of the pixel we are rendering.
                 let tile_colour = (((msb >> tile_x) & 0x01) << 1) | ((lsb >> tile_x) & 0x01);
 
-                self.line_priorities[x as usize] = (tile_colour, priority);
+                self.bgd_line[x as usize] = (tile_colour, priority);
 
                 // The palette we are going to use.
                 let palette_offset = (palette * 8) + (tile_colour as usize * 2);
@@ -751,8 +761,8 @@ impl Ppu {
                     if colour_index != 0 {
                         if self.cgb_mode {
                             if !get_bit!(self.lcdc, 0)
-                                || (self.line_priorities[actual_x as usize].0 == 0)
-                                || (!self.line_priorities[actual_x as usize].1 && sprite_over_bg)
+                                || (self.bgd_line[actual_x as usize].0 == 0)
+                                || (!self.bgd_line[actual_x as usize].1 && sprite_over_bg)
                             {
                                 self.set_pixel(actual_x, self.ly, colour);
                             }
