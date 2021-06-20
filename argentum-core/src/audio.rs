@@ -1,6 +1,6 @@
 /// The rate at which samples are consumed by the audio
 /// driver.
-pub const SAMPLE_RATE: usize = 65536;
+pub const SAMPLE_RATE: usize = 48000;
 
 /// The size of the audio sample buffer.
 pub const BUFFER_SIZE: usize = 1024;

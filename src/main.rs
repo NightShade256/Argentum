@@ -132,7 +132,7 @@ pub fn main() {
         // Setup SDL audio system.
         let mut audio_spec: SDL_AudioSpec = std::mem::zeroed();
 
-        audio_spec.freq = 65536;
+        audio_spec.freq = 48000;
         audio_spec.format = AUDIO_F32SYS;
         audio_spec.channels = 2;
         audio_spec.samples = 1024;
