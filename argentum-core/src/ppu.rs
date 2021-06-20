@@ -1,5 +1,3 @@
-//! Contains implementation of the Game Boy PPU.
-
 use std::{cell::RefCell, rc::Rc};
 
 use crate::util::{get_bit, res_bit, set_bit};
@@ -30,7 +28,7 @@ struct Sprite {
 /// Enumerates all the different modes the PPU can be in.
 #[derive(Clone, Copy)]
 #[repr(u8)]
-pub enum PpuMode {
+pub(crate) enum PpuMode {
     HBlank = 0,
     VBlank = 1,
     OamSearch = 2,
@@ -327,12 +325,6 @@ impl Ppu {
         }
     }
 
-    /// Render the current scanline.
-    fn render_scanline(&mut self) {
-        self.render_background();
-        self.render_sprites();
-    }
-
     /// Tick the PPU by 1 M cycle, and return a bool
     /// that tells if we have entered HBlank.
     pub fn tick(&mut self, cycles: u32) -> bool {
@@ -399,6 +391,12 @@ impl Ppu {
         }
 
         entered_hblank
+    }
+
+    /// Render the current scanline.
+    fn render_scanline(&mut self) {
+        self.render_background();
+        self.render_sprites();
     }
 
     /// Set a pixel in the framebuffer at the given `x` and `y`
