@@ -13,17 +13,10 @@ pub struct Argentum {
 impl Argentum {
     /// Create a new `Argentum` instance.
     pub fn new(rom: &[u8], callback: Box<dyn Fn(&[f32])>, save_file: Option<Vec<u8>>) -> Self {
-        let mut argentum = Self {
+        Self {
             bus: Bus::new(rom, callback, save_file),
             cpu: Cpu::new(),
-        };
-
-        if argentum.bus.cgb_mode {
-            argentum.cpu.skip_bootrom(argentum.bus.cgb_mode);
-            argentum.bus.skip_bootrom();
         }
-
-        argentum
     }
 
     /// Execute a frame's worth of instructions.
@@ -41,10 +34,6 @@ impl Argentum {
     }
 
     pub fn skip_bootrom(&mut self) {
-        if self.bus.cgb_mode {
-            return;
-        }
-
         self.cpu.skip_bootrom(self.bus.cgb_mode);
         self.bus.skip_bootrom();
     }

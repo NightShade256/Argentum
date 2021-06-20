@@ -2,9 +2,13 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::{audio::Apu, cartridge::*, joypad::Joypad, ppu::Ppu, timer::Timer};
 
-/// This is the custom copyright free bootrom for DMG
-/// made by Optix.
-const BOOT_ROM: &[u8] = include_bytes!("bootrom/bootix_dmg.bin");
+/// This is a custom bootrom for DMG
+/// made by LIJI.
+const DMG_BOOT_ROM: &[u8] = include_bytes!("bootrom/dmg_boot.bin");
+
+/// This is a custom bootrom for CGB
+/// made by LIJI.
+const CGB_BOOT_ROM: &[u8] = include_bytes!("bootrom/cgb_boot.bin");
 
 /// Implementation of the Game Boy memory bus.
 pub(crate) struct Bus {
@@ -122,8 +126,15 @@ impl Bus {
     /// Tick the components if specified.
     pub fn read_byte(&mut self, addr: u16, tick: bool) -> u8 {
         let value = match addr {
-            // First 256 bytes map to bootrom.
-            0x0000..=0x00FF if self.boot_reg == 0 => BOOT_ROM[addr as usize],
+            0x0000..=0x00FF if self.boot_reg == 0 => {
+                if self.cgb_mode {
+                    CGB_BOOT_ROM[addr as usize]
+                } else {
+                    DMG_BOOT_ROM[addr as usize]
+                }
+            }
+
+            0x0200..=0x08FF if self.boot_reg == 0 && self.cgb_mode => CGB_BOOT_ROM[addr as usize],
 
             // ROM Banks.
             0x0000..=0x7FFF => self.cartridge.read_byte(addr),
