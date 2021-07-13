@@ -1,6 +1,6 @@
 use std::{env, ffi::CString, path::PathBuf};
 
-use argentum_core::{Argentum, ArgentumKey};
+use argentum::{Argentum, ArgentumKey};
 use clap::Clap;
 use fermium::prelude::*;
 
