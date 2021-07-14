@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, ops::Add, ptr::addr_of, rc::Rc};
 
 use crate::util::{get_bit, res_bit, set_bit};
 
@@ -11,18 +11,30 @@ const DMG_MODE_PALETTE: [u32; 4] = [0xFED018, 0xD35600, 0x5E1210, 0x0D0405];
 
 /// Represents sprite data as stored in OAM.
 #[derive(Clone, Copy)]
+#[repr(C)]
 struct Sprite {
-    /// The Y coordinate of the sprite.
+    /// The absolute Y coordinate of the sprite.
     y: u8,
 
-    /// The X coordinate of the sprite.
+    /// The absolute X coordinate of the sprite.
     x: u8,
 
-    /// The tile number of the sprite.
-    tile_number: u8,
+    /// The tile index of the sprite.
+    index: u8,
 
-    /// Sprite flags like x flip, etc...
+    /// The sprite attributes and flags.
     flags: u8,
+}
+
+impl From<[u8; 4]> for Sprite {
+    fn from(oam_entry: [u8; 4]) -> Self {
+        Self {
+            y: oam_entry[0],
+            x: oam_entry[1],
+            index: oam_entry[2],
+            flags: oam_entry[3],
+        }
+    }
 }
 
 /// Enumerates all the different modes the PPU can be in.
@@ -588,7 +600,7 @@ impl Ppu {
     /// Render the sprites present on this scanline.
     fn render_sprites(&mut self) {
         // The 1st bit of LCDC controls whether OBJs (sprites)
-        // are enabled or not.
+        // are rendered or not.
         if !get_bit!(self.lcdc, 1) {
             return;
         }
@@ -597,46 +609,34 @@ impl Ppu {
         // be 8 x 8 else it's 8 x 16.
         let sprite_size = if get_bit!(self.lcdc, 2) { 16 } else { 8 };
 
-        // Go through the OAM ram and search for all the sprites
+        // Go through OAM RAM and search for all sprites
         // that are visible in this scanline.
         // This is similar to what the PPU does in OAM search mode.
         //
         // The requirements for a sprite to be visible are,
-        // 1. Y COORD <= LY
-        // 2. Y COORD + SPRITE SIZE > LY
-        let mut sprites = self
-            .oam_ram
-            .chunks_exact(4)
-            .filter_map(|entry| {
-                if let [y, x, tile_number, flags] = *entry {
-                    let y = y.wrapping_sub(16);
-                    let x = x.wrapping_sub(8);
+        // 1. Y <= LY
+        // 2. LY < (Y + SPRITE SIZE)
+        let mut sprites = Vec::with_capacity(10);
 
-                    // In 8 x 16 sprite mode, the 0th bit of the tile number
-                    // is ignored.
-                    let tile_number = if sprite_size == 16 {
-                        tile_number & 0xFE
-                    } else {
-                        tile_number
-                    };
+        for i in (0x00..0xA0).step_by(4) {
+            if sprites.len() == 10 {
+                break;
+            }
 
-                    if y <= self.ly && self.ly < y.wrapping_add(sprite_size) {
-                        Some(Sprite {
-                            y,
-                            x,
-                            tile_number,
-                            flags,
-                        })
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            })
-            .take(10)
-            .enumerate()
-            .collect::<Vec<(usize, Sprite)>>();
+            let mut sprite: Sprite =
+                unsafe { (*(self.oam_ram.as_ptr().add(i) as *const [u8; 4])).into() };
+
+            sprite.y = sprite.y.wrapping_sub(16);
+            sprite.x = sprite.x.wrapping_sub(8);
+
+            if sprite_size == 16 {
+                sprite.index &= 0xFE;
+            }
+
+            if (sprite.y <= self.ly) && (self.ly < sprite.y.wrapping_add(sprite_size)) {
+                sprites.push(sprite);
+            }
+        }
 
         // Sort the sprites in a way that,
         //
@@ -644,30 +644,13 @@ impl Ppu {
         //    over the sprite that has a higher X coordinate.
         // 2. The sprite that appeared earlier in the OAM RAM will draw
         //    over the sprite with same X coordinates.
+        sprites.reverse();
+
         if !self.cgb_mode {
-            sprites.sort_by(|&a, &b| {
-                use core::cmp::Ordering;
-
-                let res = a.1.x.cmp(&b.1.x);
-
-                if let Ordering::Equal = res {
-                    // X coordinates are equal,
-                    // therefore the one that appeared earlier wins.
-                    // BUT we reverse the order since we have to draw the sprite
-                    // over the other.
-                    a.0.cmp(&b.0).reverse()
-                } else {
-                    // Here the lower X wins.
-                    // BUT we reverse the order since we have to draw the sprite
-                    // over the other.
-                    res.reverse()
-                }
-            });
-        } else {
-            sprites.reverse();
+            sprites.sort_by(|&a, &b| a.x.cmp(&b.x).reverse());
         }
 
-        for (_, sprite) in sprites {
+        for sprite in sprites {
             // Extract sprite attributes.
             let sprite_attr = sprite.flags;
 
@@ -708,8 +691,7 @@ impl Ppu {
             };
 
             // The address of the sprite tile.
-            let tile_address =
-                (((sprite.tile_number as u16) << 4) + ((tile_y as u16) << 1)) as usize;
+            let tile_address = (((sprite.index as u16) << 4) + ((tile_y as u16) << 1)) as usize;
 
             // Extract the colour data pertaining to the row.
             let lsb = self.vram[tile_address + vram_offset];
