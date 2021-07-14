@@ -1,4 +1,4 @@
-use std::{cell::RefCell, ops::Add, ptr::addr_of, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
 use crate::util::{get_bit, res_bit, set_bit};
 
@@ -647,7 +647,7 @@ impl Ppu {
         sprites.reverse();
 
         if !self.cgb_mode {
-            sprites.sort_by(|&a, &b| a.x.cmp(&b.x).reverse());
+            sprites.sort_by(|&a, &b| b.x.cmp(&a.x));
         }
 
         for sprite in sprites {
