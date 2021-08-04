@@ -455,18 +455,10 @@ impl Ppu {
         }
 
         // The window tile map that is to be rendered.
-        let win_map = if bit!(&self.lcdc, 6) {
-            0x1C00
-        } else {
-            0x1800
-        };
+        let win_map = if bit!(&self.lcdc, 6) { 0x1C00 } else { 0x1800 };
 
         // The background tile map that is to be rendered.
-        let bgd_map = if bit!(&self.lcdc, 3) {
-            0x1C00
-        } else {
-            0x1800
-        };
+        let bgd_map = if bit!(&self.lcdc, 3) { 0x1C00 } else { 0x1800 };
 
         // The tile data that is going to be used for rendering
         // the above tile maps.

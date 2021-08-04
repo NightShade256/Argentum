@@ -8,5 +8,4 @@ license = "Apache-2.0"
 [dependencies]
 argentum = { path = "../argentum" }
 clap = "3.0.0-beta.2"
-env_logger = "0.8.4"
 fermium = "20014.4.2"

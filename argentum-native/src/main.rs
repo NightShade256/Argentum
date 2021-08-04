@@ -12,16 +12,12 @@ use renderer::Renderer;
 const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Clap)]
-#[clap(name = "Argentum GB")]
-#[clap(version = PKG_VERSION, about = "A Game Boy emulator written in Rust.")]
+#[clap(name = "Argentum")]
+#[clap(version = PKG_VERSION, about = "A Game Boy Color emulator written in Rust.")]
 struct Opt {
     /// The Game Boy ROM file to execute.
     #[clap(parse(from_os_str))]
     rom_file: PathBuf,
-
-    /// Turn on basic logging support.
-    #[clap(short, long)]
-    logging: bool,
 
     /// Skip the bootrom (Optix's custom bootrom Bootix).
     #[clap(short, long)]
@@ -57,11 +53,6 @@ pub fn main() {
     unsafe {
         // Parse command line arguments.
         let opts: Opt = Opt::parse();
-
-        // Setup logging.
-        if opts.logging {
-            env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
-        }
 
         // Read the ROM file into memory.
         let mut rom_path = opts.rom_file;
@@ -100,7 +91,7 @@ pub fn main() {
         }
 
         // Create a SDL window, and an OpenGL context.
-        let title = CString::new("Argentum GB").unwrap();
+        let title = CString::new("Argentum").unwrap();
 
         let window = SDL_CreateWindow(
             title.as_ptr(),
