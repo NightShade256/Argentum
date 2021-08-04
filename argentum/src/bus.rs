@@ -145,20 +145,13 @@ impl Bus {
             // External RAM
             0xA000..=0xBFFF => self.cartridge.read_byte(addr),
 
-            // Work RAM.
-            0xC000..=0xCFFF => self.work_ram[(addr - 0xC000) as usize],
+            // Work RAM and Echo RAM
+            0xC000..=0xCFFF | 0xE000..=0xEFFF => self.work_ram[(addr & 0xFFF) as usize],
 
-            // Work RAM Bank 1~7
-            0xD000..=0xDFFF => {
-                if self.cgb_mode {
-                    self.work_ram[(addr - 0xD000) as usize + (0x1000 * self.wram_bank)]
-                } else {
-                    self.work_ram[(addr - 0xC000) as usize]
-                }
+            // Work RAM Bank 1~7 and Echo RAM
+            0xD000..=0xDFFF | 0xF000..=0xFDFF => {
+                self.work_ram[(addr & 0xFFF) as usize + (0x1000 * self.wram_bank)]
             }
-
-            // Echo RAM.
-            0xE000..=0xFDFF => self.work_ram[(addr - 0xE000) as usize],
 
             // OAM RAM, rerouted to PPU.
             0xFE00..=0xFE9F => self.ppu.read_byte(addr),
@@ -234,20 +227,13 @@ impl Bus {
             // External RAM
             0xA000..=0xBFFF => self.cartridge.write_byte(addr, value),
 
-            // Work RAM.
-            0xC000..=0xCFFF => self.work_ram[(addr - 0xC000) as usize] = value,
+            // Work RAM and Echo RAM
+            0xC000..=0xCFFF | 0xE000..=0xEFFF => self.work_ram[(addr & 0xFFF) as usize] = value,
 
-            // Work RAM Bank 1~7
-            0xD000..=0xDFFF => {
-                if self.cgb_mode {
-                    self.work_ram[(addr - 0xD000) as usize + (0x1000 * self.wram_bank)] = value;
-                } else {
-                    self.work_ram[(addr - 0xC000) as usize] = value;
-                }
+            // Work RAM Bank 1~7 and Echo RAM
+            0xD000..=0xDFFF | 0xF000..=0xFDFF => {
+                self.work_ram[(addr & 0xFFF) as usize + (0x1000 * self.wram_bank)] = value;
             }
-
-            // Echo RAM.
-            0xE000..=0xFDFF => self.work_ram[(addr - 0xE000) as usize] = value,
 
             // OAM RAM, rerouted to PPU.
             0xFE00..=0xFE9F => self.ppu.write_byte(addr, value),
