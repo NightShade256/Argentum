@@ -1,6 +1,8 @@
 [workspace]
-
 members = [
     "argentum",
     "argentum-native",
 ]
+
+[profile.release]
+lto = "thin"
