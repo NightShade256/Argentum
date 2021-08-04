@@ -111,21 +111,6 @@ pub fn main() {
             SDL_WINDOW_OPENGL.0,
         );
 
-        // Set the window icon.
-        let mut logo_bytes = include_bytes!("images/argentum_logo.rgb").to_vec();
-
-        let icon_surface = SDL_CreateRGBSurfaceWithFormatFrom(
-            logo_bytes.as_mut_ptr() as _,
-            128,
-            128,
-            24,
-            3 * 128,
-            SDL_PIXELFORMAT_RGB24.0,
-        );
-
-        SDL_SetWindowIcon(window, icon_surface);
-        SDL_FreeSurface(icon_surface);
-
         // Create our renderer instance, and set OpenGL viewport.
         let mut renderer = Renderer::new(window);
 
