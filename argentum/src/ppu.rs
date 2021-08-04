@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::util::{get_bit, res_bit, set_bit};
+use crate::util::{bit, res, set};
 
 /// The colour palette used in DMG mode.
 /// 0 - White
@@ -256,14 +256,14 @@ impl Ppu {
             0xFF4A => self.wy = value,
             0xFF4B => self.wx = value,
 
-            0xFF4F => self.vram_banked = get_bit!(value, 0),
+            0xFF4F => self.vram_banked = bit!(&value, 0),
             0xFF68 => self.bcps = value & 0xBF,
             0xFF69 => {
                 let index = self.bcps & 0x3F;
 
                 self.bgd_palettes[index as usize] = value;
 
-                if get_bit!(self.bcps, 7) {
+                if bit!(&self.bcps, 7) {
                     self.bcps &= 0xC0;
                     self.bcps |= index.wrapping_add(1);
                 }
@@ -274,7 +274,7 @@ impl Ppu {
 
                 self.obj_palettes[index as usize] = value;
 
-                if get_bit!(self.ocps, 7) {
+                if bit!(&self.ocps, 7) {
                     self.ocps &= 0xC0;
                     self.ocps |= index.wrapping_add(1);
                 }
@@ -294,27 +294,27 @@ impl Ppu {
 
                 // Request STAT interrupt if HBlank bit
                 // in LCD STAT is set.
-                if get_bit!(self.stat, 3) {
-                    set_bit!(self.if_reg.borrow_mut(), 1);
+                if bit!(&self.stat, 3) {
+                    set!(self.if_reg.borrow_mut(), 1);
                 }
             }
 
             PpuMode::VBlank => {
                 // Request a VBlank interrupt.
-                set_bit!(self.if_reg.borrow_mut(), 0);
+                set!(self.if_reg.borrow_mut(), 0);
 
                 // Request STAT interrupt if VBlank bit
                 // in LCD STAT is set.
-                if get_bit!(self.stat, 4) {
-                    set_bit!(self.if_reg.borrow_mut(), 1);
+                if bit!(&self.stat, 4) {
+                    set!(self.if_reg.borrow_mut(), 1);
                 }
             }
 
             PpuMode::OamSearch => {
                 // Request STAT interrupt if OamSearch bit
                 // in LCD STAT is set.
-                if get_bit!(self.stat, 5) {
-                    set_bit!(self.if_reg.borrow_mut(), 1);
+                if bit!(&self.stat, 5) {
+                    set!(self.if_reg.borrow_mut(), 1);
                 }
             }
 
@@ -327,20 +327,20 @@ impl Ppu {
     /// a STAT interrupt (if enabled).
     fn compare_lyc(&mut self) {
         if self.ly == self.lyc {
-            set_bit!(&mut self.stat, 2);
+            set!(&mut self.stat, 2);
 
-            if get_bit!(self.stat, 6) {
-                set_bit!(self.if_reg.borrow_mut(), 1);
+            if bit!(&self.stat, 6) {
+                set!(self.if_reg.borrow_mut(), 1);
             }
         } else {
-            res_bit!(&mut self.stat, 2);
+            res!(&mut self.stat, 2);
         }
     }
 
     /// Tick the PPU by 1 M cycle, and return a bool
     /// that tells if we have entered HBlank.
     pub fn tick(&mut self, cycles: u32) -> bool {
-        if !get_bit!(self.lcdc, 7) {
+        if !bit!(&self.lcdc, 7) {
             return false;
         }
 
@@ -450,19 +450,19 @@ impl Ppu {
     fn render_background(&mut self) {
         // The 0th bit of the LCDC in DMG mode when zero disables all forms
         // of background and window rendering.
-        if !get_bit!(self.lcdc, 0) && !self.cgb_mode {
+        if !bit!(&self.lcdc, 0) && !self.cgb_mode {
             return;
         }
 
         // The window tile map that is to be rendered.
-        let win_map = if get_bit!(self.lcdc, 6) {
+        let win_map = if bit!(&self.lcdc, 6) {
             0x1C00
         } else {
             0x1800
         };
 
         // The background tile map that is to be rendered.
-        let bgd_map = if get_bit!(self.lcdc, 3) {
+        let bgd_map = if bit!(&self.lcdc, 3) {
             0x1C00
         } else {
             0x1800
@@ -470,7 +470,7 @@ impl Ppu {
 
         // The tile data that is going to be used for rendering
         // the above tile maps.
-        let tile_data = if get_bit!(self.lcdc, 4) {
+        let tile_data = if bit!(&self.lcdc, 4) {
             0x0000u16
         } else {
             0x1000u16
@@ -484,7 +484,7 @@ impl Ppu {
             // Extract the absolute X and Y coordinates of the pixel in
             // the respective 256 x 256 tile map.
             let (map_x, map_y, tile_map) =
-                if get_bit!(self.lcdc, 5) && self.wy <= self.ly && self.wx <= x + 7 {
+                if bit!(&self.lcdc, 5) && self.wy <= self.ly && self.wx <= x + 7 {
                     let map_x = x.wrapping_add(7).wrapping_sub(self.wx);
                     let map_y = self.window_line_counter;
 
@@ -515,13 +515,13 @@ impl Ppu {
 
             // If we are in CGB mode, check if we need to flip
             // the tile over the Y axis.
-            if self.cgb_mode && get_bit!(cgb_bgd_attrs, 6) {
+            if self.cgb_mode && bit!(&cgb_bgd_attrs, 6) {
                 tile_y = 7 - tile_y;
             }
 
             // If we are in CGB mode, check if we need to flip
             // the tile over the X axis.
-            if self.cgb_mode && !get_bit!(cgb_bgd_attrs, 5) {
+            if self.cgb_mode && !bit!(&cgb_bgd_attrs, 5) {
                 tile_x = 7 - tile_x;
             }
 
@@ -563,7 +563,7 @@ impl Ppu {
                 let palette = (cgb_bgd_attrs & 0x07) as usize;
 
                 // Extract which VRAM bank to take tile data from.
-                let bank_offset = if get_bit!(cgb_bgd_attrs, 3) {
+                let bank_offset = if bit!(&cgb_bgd_attrs, 3) {
                     0x2000
                 } else {
                     0x0000
@@ -571,7 +571,7 @@ impl Ppu {
 
                 // Extract BG to OAM priority, and store it later for sprite
                 // rendering.
-                let bg_oam_priority = get_bit!(cgb_bgd_attrs, 7);
+                let bg_oam_priority = bit!(&cgb_bgd_attrs, 7);
 
                 // Extract the colour data pertaining to the row.
                 let lsb = self.vram[tile_address + bank_offset];
@@ -601,13 +601,13 @@ impl Ppu {
     fn render_sprites(&mut self) {
         // The 1st bit of LCDC controls whether OBJs (sprites)
         // are rendered or not.
-        if !get_bit!(self.lcdc, 1) {
+        if !bit!(&self.lcdc, 1) {
             return;
         }
 
         // If the 2nd bit of LCDC is zero the sprite's size is taken to
         // be 8 x 8 else it's 8 x 16.
-        let sprite_size = if get_bit!(self.lcdc, 2) { 16 } else { 8 };
+        let sprite_size = if bit!(&self.lcdc, 2) { 16 } else { 8 };
 
         // Go through OAM RAM and search for all sprites
         // that are visible in this scanline.
@@ -655,13 +655,13 @@ impl Ppu {
             let sprite_attr = sprite.flags;
 
             // Is the sprite flipped over the Y axis.
-            let y_flip = get_bit!(sprite_attr, 6);
+            let y_flip = bit!(&sprite_attr, 6);
 
             // Is the sprite flipped over the X axis.
-            let x_flip = get_bit!(sprite_attr, 5);
+            let x_flip = bit!(&sprite_attr, 5);
 
             // The palette used to render the sprite. (DMG)
-            let palette = if get_bit!(sprite_attr, 4) {
+            let palette = if bit!(&sprite_attr, 4) {
                 self.obp1
             } else {
                 self.obp0
@@ -672,7 +672,7 @@ impl Ppu {
 
             // The VRAM bank to use for getting the sprite tile in
             // CGB mode.
-            let vram_offset = if self.cgb_mode && get_bit!(sprite_attr, 3) {
+            let vram_offset = if self.cgb_mode && bit!(&sprite_attr, 3) {
                 0x2000
             } else {
                 0x0000
@@ -681,7 +681,7 @@ impl Ppu {
             // Should the sprite be drawn over the background layer.
             // If this is false, the sprite will only be drawn
             // if the colour of BG is NOT 1-3.
-            let sprite_over_bg = !get_bit!(sprite_attr, 7);
+            let sprite_over_bg = !bit!(&sprite_attr, 7);
 
             // The row in the tile of the sprite.
             let tile_y = if y_flip {
@@ -724,7 +724,7 @@ impl Ppu {
                     // We don't draw pixels that are transparent.
                     if colour_index != 0 {
                         if self.cgb_mode {
-                            if !get_bit!(self.lcdc, 0)
+                            if !bit!(&self.lcdc, 0)
                                 || (self.bgd_line[actual_x as usize].0 == 0)
                                 || (!self.bgd_line[actual_x as usize].1 && sprite_over_bg)
                             {

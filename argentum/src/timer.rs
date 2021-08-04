@@ -1,6 +1,6 @@
 use std::{cell::RefCell, hint::unreachable_unchecked, rc::Rc};
 
-use crate::util::set_bit;
+use crate::util::set;
 
 #[derive(Default)]
 pub(crate) struct Timer {
@@ -59,7 +59,7 @@ impl Timer {
 
                 if *cycles == 0 {
                     self.tima = self.tma;
-                    set_bit!(self.if_reg.borrow_mut(), 2);
+                    set!(self.if_reg.borrow_mut(), 2);
                 }
             }
         }

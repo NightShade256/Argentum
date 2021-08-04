@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::util::set_bit;
+use crate::util::set;
 
 #[repr(u8)]
 pub enum ArgentumKey {
@@ -42,7 +42,7 @@ impl Joypad {
     /// Register a key being pressed.
     pub fn key_down(&mut self, key: ArgentumKey) {
         self.joypad_state |= key as u8;
-        set_bit!(self.if_reg.borrow_mut(), 4);
+        set!(self.if_reg.borrow_mut(), 4);
     }
 
     /// Register a key being unpressed.

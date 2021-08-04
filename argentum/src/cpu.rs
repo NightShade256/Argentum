@@ -9,7 +9,7 @@ use std::fmt::{Display, Formatter, Result};
 use self::registers::Registers;
 use crate::{
     bus::Bus,
-    util::{get_bit, res_bit},
+    util::{bit, res},
 };
 
 /// Enumerates all the states the CPU can be in.
@@ -238,9 +238,9 @@ impl Cpu {
 
         if interrupts != 0 {
             for i in 0..5 {
-                if get_bit!(bus.ie_reg, i) && get_bit!(*bus.if_reg.borrow(), i) {
+                if bit!(&bus.ie_reg, i) && bit!(bus.if_reg.borrow(), i) {
                     // Disable the interrupt in IF.
-                    res_bit!(bus.if_reg.borrow_mut(), i);
+                    res!(bus.if_reg.borrow_mut(), i);
 
                     // Disable IME.
                     self.ime = false;
