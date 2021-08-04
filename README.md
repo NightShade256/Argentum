@@ -26,7 +26,7 @@ releases section.**
 You can check the CLI's help section for usage details.
 
 ```ascii
-./argentum --help
+./argentum-native --help
 ```
 
 ## Features
