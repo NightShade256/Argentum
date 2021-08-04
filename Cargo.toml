@@ -2,5 +2,5 @@
 
 members = [
     "argentum",
-    "argentum-sdl",
+    "argentum-native",
 ]

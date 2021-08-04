@@ -1,5 +1,5 @@
 [package]
-name = "argentum-sdl"
+name = "argentum-native"
 version = "0.3.2"
 authors = ["Anish Jewalikar <anishjewalikar@gmail.com>"]
 edition = "2018"

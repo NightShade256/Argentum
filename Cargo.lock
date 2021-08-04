@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "argentum-sdl"
+name = "argentum-native"
 version = "0.3.2"
 dependencies = [
  "argentum",
