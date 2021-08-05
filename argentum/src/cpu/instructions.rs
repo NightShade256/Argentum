@@ -30,8 +30,8 @@ impl Cpu {
 
         let [sp_lower, sp_upper] = self.reg.sp.to_le_bytes();
 
-        bus.write_byte(address, sp_lower, true);
-        bus.write_byte(address + 1, sp_upper, true);
+        self.write_byte(bus, address, sp_lower);
+        self.write_byte(bus, address + 1, sp_upper);
     }
 
     /// STOP.
@@ -96,14 +96,14 @@ impl Cpu {
     pub fn ld_r16_a(&mut self, bus: &mut Bus, r16: u8) {
         let addr = self.read_r16::<2>(r16);
 
-        bus.write_byte(addr, self.reg.a, true);
+        self.write_byte(bus, addr, self.reg.a);
     }
 
     /// LD A, (R16).
     pub fn ld_a_r16(&mut self, bus: &mut Bus, r16: u8) {
         let addr = self.read_r16::<2>(r16);
 
-        self.reg.a = bus.read_byte(addr, true);
+        self.reg.a = self.read_byte(bus, addr);
     }
 
     /// INC R16.
@@ -370,10 +370,10 @@ impl Cpu {
 
     /// RET (unconditional).
     pub fn unconditional_ret(&mut self, bus: &mut Bus) {
-        let lower = bus.read_byte(self.reg.sp, true);
+        let lower = self.read_byte(bus, self.reg.sp);
         self.reg.sp += 1;
 
-        let upper = bus.read_byte(self.reg.sp, true);
+        let upper = self.read_byte(bus, self.reg.sp);
         self.reg.sp += 1;
 
         let return_address = u16::from_le_bytes([lower, upper]);
@@ -395,7 +395,7 @@ impl Cpu {
     pub fn ld_io_u8_a(&mut self, bus: &mut Bus) {
         let offset = self.imm_byte(bus) as u16;
 
-        bus.write_byte(0xFF00u16.wrapping_add(offset), self.reg.a, true);
+        self.write_byte(bus, 0xFF00u16.wrapping_add(offset), self.reg.a);
     }
 
     /// ADD SP, i8.
@@ -420,7 +420,7 @@ impl Cpu {
     pub fn ld_a_io_u8(&mut self, bus: &mut Bus) {
         let offset = self.imm_byte(bus) as u16;
 
-        self.reg.a = bus.read_byte(0xFF00u16.wrapping_add(offset), true);
+        self.reg.a = self.read_byte(bus, 0xFF00u16.wrapping_add(offset));
     }
 
     /// LD HL, SP + i8.
@@ -441,10 +441,10 @@ impl Cpu {
 
     /// POP R16.
     pub fn pop_r16(&mut self, bus: &mut Bus, r16: u8) {
-        let lower = bus.read_byte(self.reg.sp, true);
+        let lower = self.read_byte(bus, self.reg.sp);
         self.reg.sp = self.reg.sp.wrapping_add(1);
 
-        let upper = bus.read_byte(self.reg.sp, true);
+        let upper = self.read_byte(bus, self.reg.sp);
         self.reg.sp = self.reg.sp.wrapping_add(1);
 
         let value = u16::from_le_bytes([lower, upper]);
@@ -637,10 +637,10 @@ impl Cpu {
             let [lower, upper] = self.reg.pc.to_le_bytes();
 
             self.reg.sp = self.reg.sp.wrapping_sub(1);
-            bus.write_byte(self.reg.sp, upper, true);
+            self.write_byte(bus, self.reg.sp, upper);
 
             self.reg.sp = self.reg.sp.wrapping_sub(1);
-            bus.write_byte(self.reg.sp, lower, true);
+            self.write_byte(bus, self.reg.sp, lower);
 
             self.reg.pc = address;
         }
@@ -658,10 +658,10 @@ impl Cpu {
         let [lower, upper] = self.reg.pc.to_le_bytes();
 
         self.reg.sp = self.reg.sp.wrapping_sub(1);
-        bus.write_byte(self.reg.sp, upper, true);
+        self.write_byte(bus, self.reg.sp, upper);
 
         self.reg.sp = self.reg.sp.wrapping_sub(1);
-        bus.write_byte(self.reg.sp, lower, true);
+        self.write_byte(bus, self.reg.sp, lower);
 
         self.reg.pc = address;
     }
@@ -674,9 +674,9 @@ impl Cpu {
         self.internal_cycle(bus);
 
         self.reg.sp = self.reg.sp.wrapping_sub(1);
-        bus.write_byte(self.reg.sp, upper, true);
+        self.write_byte(bus, self.reg.sp, upper);
 
         self.reg.sp = self.reg.sp.wrapping_sub(1);
-        bus.write_byte(self.reg.sp, lower, true);
+        self.write_byte(bus, self.reg.sp, lower);
     }
 }

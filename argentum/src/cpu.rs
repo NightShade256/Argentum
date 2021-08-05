@@ -72,11 +72,19 @@ impl Cpu {
         }
     }
 
+    pub fn read_byte(&mut self, bus: &mut Bus, addr: u16) -> u8 {
+        self.cycles += 4;
+        bus.read_byte(addr, true)
+    }
+
+    pub fn write_byte(&mut self, bus: &mut Bus, addr: u16, value: u8) {
+        self.cycles += 4;
+        bus.write_byte(addr, value, true);
+    }
+
     /// Read a byte from the current PC address.
     pub fn imm_byte(&mut self, bus: &mut Bus) -> u8 {
-        let value = bus.read_byte(self.reg.pc, true);
-
-        self.cycles += 4;
+        let value = self.read_byte(bus, self.reg.pc);
         self.reg.pc = self.reg.pc.wrapping_add(1);
 
         value
@@ -177,7 +185,7 @@ impl Cpu {
             3 => self.reg.e,
             4 => self.reg.h,
             5 => self.reg.l,
-            6 => bus.read_byte(self.reg.get_hl(), true),
+            6 => self.read_byte(bus, self.reg.get_hl()),
             7 => self.reg.a,
 
             _ => unreachable!(),
@@ -194,7 +202,7 @@ impl Cpu {
             3 => self.reg.e = value,
             4 => self.reg.h = value,
             5 => self.reg.l = value,
-            6 => bus.write_byte(self.reg.get_hl(), value, true),
+            6 => self.write_byte(bus, self.reg.get_hl(), value),
             7 => self.reg.a = value,
 
             _ => unreachable!(),
@@ -253,10 +261,10 @@ impl Cpu {
                     let [lower, upper] = self.reg.pc.to_le_bytes();
 
                     self.reg.sp = self.reg.sp.wrapping_sub(1);
-                    bus.write_byte(self.reg.sp, upper, true);
+                    self.write_byte(bus, self.reg.sp, upper);
 
                     self.reg.sp = self.reg.sp.wrapping_sub(1);
-                    bus.write_byte(self.reg.sp, lower, true);
+                    self.write_byte(bus, self.reg.sp, lower);
 
                     // 0x40 - VBLANK
                     // 0x48 - LCD STAT

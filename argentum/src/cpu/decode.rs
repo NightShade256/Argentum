@@ -158,7 +158,7 @@ impl Cpu {
             0xE2 => {
                 let address = (0xFF00u16).wrapping_add(self.reg.c as u16);
 
-                bus.write_byte(address, self.reg.a, true);
+                self.write_byte(bus, address, self.reg.a);
             }
 
             0xEA => {
@@ -167,13 +167,13 @@ impl Cpu {
 
                 let address = u16::from_le_bytes([lower, upper]);
 
-                bus.write_byte(address, self.reg.a, true);
+                self.write_byte(bus, address, self.reg.a);
             }
 
             0xF2 => {
                 let address = (0xFF00u16).wrapping_add(self.reg.c as u16);
 
-                self.reg.a = bus.read_byte(address, true);
+                self.reg.a = self.read_byte(bus, address);
             }
 
             0xFA => {
@@ -182,7 +182,7 @@ impl Cpu {
 
                 let address = u16::from_le_bytes([lower, upper]);
 
-                self.reg.a = bus.read_byte(address, true);
+                self.reg.a = self.read_byte(bus, address);
             }
 
             0xC3 => self.unconditional_jp(bus),
@@ -276,10 +276,10 @@ impl Cpu {
                 self.internal_cycle(bus);
 
                 self.reg.sp = self.reg.sp.wrapping_sub(1);
-                bus.write_byte(self.reg.sp, upper, true);
+                self.write_byte(bus, self.reg.sp, upper);
 
                 self.reg.sp = self.reg.sp.wrapping_sub(1);
-                bus.write_byte(self.reg.sp, lower, true);
+                self.write_byte(bus, self.reg.sp, lower);
 
                 self.reg.pc = vec;
             }
