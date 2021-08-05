@@ -4,14 +4,14 @@ version = 3
 
 [[package]]
 name = "argentum"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "bitflags",
 ]
 
 [[package]]
 name = "argentum-native"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "argentum",
  "clap",
