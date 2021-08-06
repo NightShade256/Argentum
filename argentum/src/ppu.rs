@@ -7,7 +7,7 @@ use crate::util::{bit, res, set};
 /// 1 - Light Gray
 /// 2 - Dark Gray
 /// 3 - Black
-const DMG_MODE_PALETTE: [u32; 4] = [0xFED018, 0xD35600, 0x5E1210, 0x0D0405];
+static DMG_MODE_PALETTE: [u32; 4] = [0xFF18D0FE, 0xFF0056D3, 0xFF10125E, 0xFF05040D];
 
 /// Represents sprite data as stored in OAM.
 #[derive(Clone, Copy)]
@@ -150,10 +150,10 @@ pub(crate) struct Ppu {
     total_cycles: u32,
 
     /// RGB24 framebuffer, this is the back buffer.
-    back_framebuffer: Box<[u8; 160 * 144 * 3]>,
+    back_framebuffer: Box<[u8; 160 * 144 * 4]>,
 
     /// RGB24 framebuffer, this is the front buffer.
-    pub front_framebuffer: Box<[u8; 160 * 144 * 3]>,
+    pub front_framebuffer: Box<[u8; 160 * 144 * 4]>,
 
     /// Shared reference to IF register.
     if_reg: Rc<RefCell<u8>>,
@@ -186,8 +186,8 @@ impl Ppu {
             vram_banked: false,
             current_mode: PpuMode::OamSearch,
             total_cycles: 0,
-            back_framebuffer: Box::new([0; 160 * 144 * 3]),
-            front_framebuffer: Box::new([0; 160 * 144 * 3]),
+            back_framebuffer: Box::new([0; 160 * 144 * 4]),
+            front_framebuffer: Box::new([0; 160 * 144 * 4]),
             if_reg,
         }
     }
@@ -414,18 +414,18 @@ impl Ppu {
     /// Set a pixel in the framebuffer at the given `x` and `y`
     /// coordinates.
     fn set_pixel(&mut self, x: u8, y: u8, colour: u32) {
-        let offset = (((y as usize) << 5) * 15) + (x as usize * 3);
+        let offset = ((y as usize * 160) + x as usize) * 4;
 
-        self.back_framebuffer[offset] = ((colour & 0xFF0000) >> 16) as u8;
-        self.back_framebuffer[offset + 1] = ((colour & 0x00FF00) >> 8) as u8;
-        self.back_framebuffer[offset + 2] = (colour & 0x0000FF) as u8;
+        unsafe {
+            *(self.back_framebuffer.as_mut_ptr().add(offset) as *mut u32) = colour;
+        }
     }
 
     /// Scale the CGB 5 bit RGB to standard 8 bit RGB.
     /// Colour Correction Algorithm taken from Byuu's (Near) blog.
     /// https://near.sh/articles/video/color-emulation
     fn scale_rgb(&self, cgb_colour: u16) -> u32 {
-        let mut scaled = 0x000000;
+        let mut scaled = 0x00000000;
 
         let red = (cgb_colour >> 0) & 0x1F;
         let green = (cgb_colour >> 5) & 0x1F;
@@ -439,11 +439,12 @@ impl Ppu {
         new_green = new_green.min(960) >> 2;
         new_blue = new_blue.min(960) >> 2;
 
-        scaled |= (new_red as u32) << 16;
-        scaled |= (new_green as u32) << 8;
-        scaled |= new_blue as u32;
+        scaled |= (new_red as u32) << 24;
+        scaled |= (new_green as u32) << 16;
+        scaled |= (new_blue as u32) << 8;
+        scaled |= 0xFF;
 
-        scaled
+        scaled.swap_bytes()
     }
 
     /// Render the background map and the window map for this scanline.
