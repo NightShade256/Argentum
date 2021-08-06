@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+    <title>Argentum</title>
+</head>
+
+<body>
+    <div style="display: flex;justify-content: center;align-items: flex-start;">
+        <h1>Argentum</h1>
+    </div>
+
+    <br />
+    <br />
+
+    <div style="display: flex;justify-content: center;align-items: center;">
+        <canvas id="canvas" width="480" , height="432"></canvas>
+    </div>
+
+    <br />
+    <br />
+
+    <div style="display: flex; justify-content: center; align-items: flex-end;">
+        <label for="rom_input">ROM file:</label>
+        &nbsp;
+        <input type="file" id="rom_input" name="rom_input">
+
+        <button id="start">Start</button>
+        &nbsp;
+        <button id="stop">Stop</button>
+    </div>
+
+    <script type="module">
+        import init, { start_emulator, stop_emulator } from "./wasm/argentum_web.js";
+
+        let canvas = document.getElementById("canvas");
+        let ctx = canvas.getContext("2d");
+
+        ctx.fillStyle = "black";
+        ctx.fillRect(0.0, 0.0, canvas.width, canvas.height);
+
+        let rom_file = null;
+        let emulator_handle = null;
+
+        async function run() {
+            await init();
+
+            let rom_input = document.getElementById("rom_input");
+            let start = document.getElementById("start");
+            let stop = document.getElementById("stop");
+
+            rom_input.addEventListener("input", (_) => {
+                rom_file = rom_input.files[0];
+            });
+
+            start.addEventListener("click", (_) => {
+                if (rom_file === null || emulator_handle !== null) {
+                    return;
+                }
+
+                let file_reader = new FileReader();
+                file_reader.readAsArrayBuffer(rom_file);
+
+                file_reader.addEventListener("loadend", (_) => {
+                    let rom = new Uint8Array(file_reader.result);
+                    emulator_handle = start_emulator(rom, ctx);
+                });
+            });
+
+            stop.addEventListener("click", (_) => {
+                stop_emulator(emulator_handle);
+                emulator_handle = null;
+
+                ctx.fillStyle = "black";
+                ctx.fillRect(0.0, 0.0, canvas.width, canvas.height);
+            });
+        }
+
+        run();
+    </script>
+</body>
+
+</html>

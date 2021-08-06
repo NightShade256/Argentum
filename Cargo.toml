@@ -2,6 +2,7 @@
 members = [
     "argentum",
     "argentum-native",
+    "argentum-web",
 ]
 
 [profile.release]
