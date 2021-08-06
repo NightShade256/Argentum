@@ -34,7 +34,7 @@ fn handle_keyboard_input(gb: &mut Argentum, input: SDL_Scancode, is_pressed: boo
         SDL_SCANCODE_RETURN => Some(ArgentumKey::Start),
         SDL_SCANCODE_SPACE => Some(ArgentumKey::Select),
         SDL_SCANCODE_Z => Some(ArgentumKey::ButtonA),
-        SDL_SCANCODE_X => Some(ArgentumKey::ButtonA),
+        SDL_SCANCODE_X => Some(ArgentumKey::ButtonB),
 
         _ => None,
     };
