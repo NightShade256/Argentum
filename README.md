@@ -39,7 +39,7 @@ Argentum is certainly not perfect, but it supports the following features.
 - Great CGB Support.
 - MBC1 (no multicarts), MBC3 (no RTC) and MBC5 (no rumble) cartridges are supported.
 - Support for sound with all sound channels working as intended.
-- Boot ROM support (right now only Bootix by Optix is supported and also only for DMG).
+- Boot ROM support (right now only SameBoot is supported).
 - Battery Saves support (extremely experimental, should not be relied upon!)
 
 ## Resources
