@@ -24,7 +24,7 @@ jobs:
       - name: Build WASM blob
         run: |
           cargo install wasm-pack
-          wasm-pack build argentum-web --target web --out-dir argentum-web/www/wasm --release --no-typescript
+          wasm-pack build argentum-web --target web --out-dir www/wasm --release --no-typescript
           rm ./argentum-web/www/wasm/.gitignore
 
       - name: Deploy 🚀
