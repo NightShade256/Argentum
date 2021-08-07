@@ -1,0 +1,10 @@
+{
+  "name": "argentum-web",
+  "version": "0.4.2",
+  "files": [
+    "argentum_web_bg.wasm",
+    "argentum_web.js"
+  ],
+  "module": "argentum_web.js",
+  "sideEffects": false
+}
