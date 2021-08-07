@@ -21,7 +21,6 @@ basic-http-server ./www
 
 and navigate to localhost in your web browser.
 
+## Note
 
-## ToDO
-
-- Joypad Input
+The web frontend is a bit buggier than the native frontend.

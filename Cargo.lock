@@ -45,9 +45,9 @@ name = "argentum-web"
 version = "0.1.0"
 dependencies = [
  "argentum",
+ "js-sys",
  "rodio",
  "wasm-bindgen",
- "web-sys",
 ]
 
 [[package]]
