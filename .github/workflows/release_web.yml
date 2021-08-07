@@ -24,6 +24,7 @@ jobs:
         run: |
           cargo install wasm-pack
           wasm-pack build argentum-web --target web --out-dir argentum-web/www/wasm --release --no-typescript
+          rm argentum-web/www/.gitignore
 
       - name: Deploy 🚀
         uses: JamesIves/github-pages-deploy-action@4.1.4
