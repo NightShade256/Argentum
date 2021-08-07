@@ -9,23 +9,24 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    - name: Checkout
-        uses: actions/checkout@v2
+    steps:
+      - name: Checkout
+          uses: actions/checkout@v2
 
-    - name: Setup Rust.
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        default: true
-        target: wasm32-unknown-unknown
+      - name: Setup Rust.
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          default: true
+          target: wasm32-unknown-unknown
 
-    - name: Build WASM blob
-      run: |
-        cargo install wasm-pack
-        wasm-pack build argentum-web --target web --out-dir argentum-web/www/wasm --release --no-typescript
+      - name: Build WASM blob
+        run: |
+          cargo install wasm-pack
+          wasm-pack build argentum-web --target web --out-dir argentum-web/www/wasm --release --no-typescript
 
-    - name: Deploy 🚀
-      uses: JamesIves/github-pages-deploy-action@4.1.4
-      with:
-        branch: gh-pages
-        folder: argentum-web/www
+      - name: Deploy 🚀
+        uses: JamesIves/github-pages-deploy-action@4.1.4
+        with:
+          branch: gh-pages
+          folder: argentum-web/www
