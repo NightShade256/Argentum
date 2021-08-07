@@ -1,6 +1,6 @@
 [package]
 name = "argentum-native"
-version = "0.4.1"
+version = "0.4.2"
 authors = ["Anish Jewalikar <anishjewalikar@gmail.com>"]
 edition = "2018"
 license = "Apache-2.0"
