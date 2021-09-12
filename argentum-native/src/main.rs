@@ -1,163 +1,164 @@
-use std::{env, ffi::CString, path::PathBuf};
+use std::{path::PathBuf, time::Duration};
 
 use argentum::{Argentum, ArgentumKey};
 use clap::Clap;
-use fermium::prelude::*;
+use pixels::{PixelsBuilder, SurfaceTexture};
+use sdl2::{
+    audio::{AudioQueue, AudioSpecDesired},
+    event::{Event, WindowEvent},
+    keyboard::Scancode,
+};
 
-mod renderer;
-
-use renderer::Renderer;
-
-/// The version of this crate. To pass to Clap CLI.
 const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Clap)]
 #[clap(name = "Argentum")]
 #[clap(version = PKG_VERSION, about = "A Game Boy Color emulator written in Rust.")]
 struct Opt {
-    /// The Game Boy ROM file to execute.
     #[clap(parse(from_os_str))]
     rom_file: PathBuf,
 
-    /// Skip the bootrom (Optix's custom bootrom Bootix).
     #[clap(short, long)]
     skip_bootrom: bool,
 }
 
-/// Handle keyboard input.
-fn handle_keyboard_input(gb: &mut Argentum, input: SDL_Scancode, is_pressed: bool) {
-    let key = match input {
-        SDL_SCANCODE_W => Some(ArgentumKey::Up),
-        SDL_SCANCODE_A => Some(ArgentumKey::Left),
-        SDL_SCANCODE_S => Some(ArgentumKey::Down),
-        SDL_SCANCODE_D => Some(ArgentumKey::Right),
-        SDL_SCANCODE_RETURN => Some(ArgentumKey::Start),
-        SDL_SCANCODE_SPACE => Some(ArgentumKey::Select),
-        SDL_SCANCODE_Z => Some(ArgentumKey::ButtonA),
-        SDL_SCANCODE_X => Some(ArgentumKey::ButtonB),
+/// Map a SDL_Scancode to an Argentum Key.
+fn map_scancode_key(code: Scancode) -> Option<ArgentumKey> {
+    match code {
+        Scancode::W => Some(ArgentumKey::Up),
+        Scancode::A => Some(ArgentumKey::Left),
+        Scancode::S => Some(ArgentumKey::Down),
+        Scancode::D => Some(ArgentumKey::Right),
+        Scancode::Z => Some(ArgentumKey::ButtonA),
+        Scancode::X => Some(ArgentumKey::ButtonB),
+        Scancode::Return => Some(ArgentumKey::Start),
+        Scancode::Space => Some(ArgentumKey::Select),
 
         _ => None,
-    };
-
-    if let Some(key) = key {
-        if is_pressed {
-            gb.key_down(key);
-        } else {
-            gb.key_up(key);
-        }
     }
 }
 
-/// Start running the emulator.
-pub fn main() {
-    unsafe {
-        // Parse command line arguments.
-        let opts: Opt = Opt::parse();
+fn main() {
+    // Parse CLI options, and initialize SDL
+    let opt: Opt = Opt::parse();
+    let sdl = sdl2::init().expect("failed to initialize SDL");
 
-        // Read the ROM file into memory.
-        let mut rom_path = opts.rom_file;
+    // Initialize audio and video SDL subsystems
+    let audio_subsystem = sdl
+        .audio()
+        .expect("failed to initialize SDL audio subsystem");
 
-        let rom = std::fs::read(&rom_path).expect("Failed to read the ROM file.");
+    let video_subsystem = sdl
+        .video()
+        .expect("failed to initialize SDL video subsystem");
 
-        // Check if there is a save file.
-        rom_path.set_extension("sav");
+    // Create a SDL window
+    let window = video_subsystem
+        .window("Argentum", 480, 432)
+        .position_centered()
+        .resizable()
+        .build()
+        .expect("failed to create a window");
 
-        let save_file = std::fs::read(&rom_path).ok();
+    // Create a Pixels instance for rendering
+    let mut pixels = {
+        let window_size = window.drawable_size();
+        let texture = SurfaceTexture::new(window_size.0, window_size.1, &window);
 
-        // Create a Game Boy instance and skip the bootrom.
-        let mut argentum = Argentum::new(
-            &rom,
-            Box::new(|buffer| {
-                while SDL_GetQueuedAudioSize(SDL_AudioDeviceID(1)) > 1024 * 4 * 2 {
-                    SDL_Delay(1);
-                }
+        PixelsBuilder::new(160, 144, texture)
+            .enable_vsync(false)
+            .build()
+            .expect("failed to create a Pixels instance")
+    };
 
-                SDL_QueueAudio(
-                    SDL_AudioDeviceID(1),
-                    buffer.as_ptr() as _,
-                    (std::mem::size_of::<f32>() * buffer.len()) as u32,
-                );
-            }),
-            save_file,
-        );
+    // Create an audio queue
+    let desired_spec = AudioSpecDesired {
+        freq: Some(48000),
+        channels: Some(2),
+        samples: Some(1024),
+    };
 
-        if opts.skip_bootrom {
-            argentum.skip_bootrom();
-        }
+    let audio_queue: AudioQueue<f32> = audio_subsystem
+        .open_queue(None, &desired_spec)
+        .expect("failed to create audio queue");
 
-        // Initialize SDL's video and audio subsystems.
-        if SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER) != 0 {
-            panic!("Failed to initialize SDL.");
-        }
+    audio_queue.resume();
 
-        // Create a SDL window, and an OpenGL context.
-        let title = CString::new("Argentum").unwrap();
+    // Read the ROM file provided by the user
+    let mut rom_path = opt.rom_file;
+    let rom = std::fs::read(&rom_path).expect("failed to read the ROM file");
 
-        let window = SDL_CreateWindow(
-            title.as_ptr(),
-            SDL_WINDOWPOS_CENTERED,
-            SDL_WINDOWPOS_CENTERED,
-            480,
-            432,
-            SDL_WINDOW_OPENGL.0,
-        );
+    // Check if there is a save file accompanying the ROM file, and read it
+    rom_path.set_extension("sav");
+    let save_file = std::fs::read(&rom_path).ok();
 
-        // Create our renderer instance, and set OpenGL viewport.
-        let mut renderer = Renderer::new(window);
-
-        // Setup SDL audio system.
-        let mut audio_spec: SDL_AudioSpec = std::mem::zeroed();
-
-        audio_spec.freq = 48000;
-        audio_spec.format = AUDIO_F32SYS;
-        audio_spec.channels = 2;
-        audio_spec.samples = 1024;
-        audio_spec.callback = None;
-
-        // Open audio queue with the desired spec.
-        SDL_OpenAudio(&mut audio_spec as _, std::ptr::null_mut());
-
-        // Start the audio queue.
-        SDL_PauseAudio(0);
-
-        // Used to store the current polled event.
-        let mut event: SDL_Event = std::mem::zeroed();
-
-        'main: loop {
-            // Poll events, quit and handle input appropriately.
-            while SDL_PollEvent(&mut event as _) != 0 {
-                match event.type_ {
-                    SDL_KEYDOWN => {
-                        handle_keyboard_input(&mut argentum, event.key.keysym.scancode, true);
-                    }
-
-                    SDL_KEYUP => {
-                        handle_keyboard_input(&mut argentum, event.key.keysym.scancode, false);
-                    }
-
-                    SDL_QUIT => break 'main,
-
-                    _ => {}
-                }
+    // Create an Argentum instance
+    let mut argentum = Argentum::new(
+        &rom,
+        Box::new(move |buffer| {
+            while audio_queue.size() > 1024 * 4 * 2 {
+                std::thread::sleep(Duration::from_millis(1));
             }
 
-            // Execute one frame's worth of instructions.
-            argentum.execute_frame();
+            audio_queue.queue(buffer);
+        }),
+        save_file,
+    );
 
-            // Render the framebuffer to the backbuffer.
-            renderer.update_texture(argentum.get_framebuffer());
+    // Create an event pump for window events
+    let mut event_pump = sdl.event_pump().unwrap();
 
-            // Swap front and back buffers.
-            SDL_GL_SwapWindow(window);
+    'main: loop {
+        // Handle window events if any
+        for event in event_pump.poll_iter() {
+            match event {
+                Event::KeyDown {
+                    scancode: Some(code),
+                    ..
+                } => {
+                    if let Some(key) = map_scancode_key(code) {
+                        argentum.key_down(key);
+                    }
+                }
+
+                Event::KeyUp {
+                    scancode: Some(code),
+                    ..
+                } => {
+                    if let Some(key) = map_scancode_key(code) {
+                        argentum.key_up(key);
+                    }
+                }
+
+                Event::Quit { .. } => {
+                    break 'main;
+                }
+
+                Event::Window {
+                    win_event: WindowEvent::Resized(width, height),
+                    ..
+                } => {
+                    pixels.resize_surface(width as u32, height as u32);
+                }
+
+                _ => {}
+            }
         }
 
-        if let Some(ram_save) = argentum.get_ram_dump() {
-            std::fs::write(&rom_path, &ram_save).expect("Failed to write save file.");
-        }
+        // Execute a frames worth of instructions
+        argentum.execute_frame();
 
-        // De-init SDL subsystems, and return.
-        SDL_CloseAudio();
-        SDL_DestroyWindow(window);
-        SDL_Quit();
+        // Update the pixels framebuffer
+        pixels
+            .get_frame()
+            .copy_from_slice(argentum.get_framebuffer());
+
+        // Render the framebuffer to the screen
+        pixels.render().expect("failed to render framebuffer");
+    }
+
+    // Save RAM dump
+    if let Some(ram_save) = argentum.get_ram_dump() {
+        std::fs::write(&rom_path, &ram_save).expect("failed to write save file");
     }
 }

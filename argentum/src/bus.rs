@@ -90,7 +90,7 @@ impl Bus {
             0x01..=0x03 => Box::new(Mbc1::new(rom)),
             0x0F..=0x13 => Box::new(Mbc3::new(rom, save_file)),
             0x19..=0x1E => Box::new(Mbc5::new(rom)),
-    
+
             _ => panic!("unsupported cartridge type"),
         };
 
