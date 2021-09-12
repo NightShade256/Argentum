@@ -15,7 +15,7 @@ fn map_code_to_key(code: &str) -> Option<ArgentumKey> {
         "Space" => Some(ArgentumKey::Select),
         "Enter" => Some(ArgentumKey::Start),
 
-        _ => return None,
+        _ => None,
     }
 }
 
