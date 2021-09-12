@@ -47,14 +47,14 @@ dependencies = [
 
 [[package]]
 name = "argentum"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "bitflags",
 ]
 
 [[package]]
 name = "argentum-native"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "argentum",
  "clap",
@@ -64,7 +64,7 @@ dependencies = [
 
 [[package]]
 name = "argentum-web"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "argentum",
  "js-sys",
