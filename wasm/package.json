@@ -1,6 +1,6 @@
 {
   "name": "argentum-web",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "files": [
     "argentum_web_bg.wasm",
     "argentum_web.js"
