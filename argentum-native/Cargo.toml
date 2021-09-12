@@ -8,4 +8,6 @@ license = "Apache-2.0"
 [dependencies]
 argentum = { path = "../argentum" }
 clap = "3.0.0-beta.4"
-fermium = "20014.4.2"
+pixels = "0.6.0"
+rodio = { version = "0.14.0", default-features = false }
+winit = "0.25.0"
