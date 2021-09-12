@@ -12,7 +12,7 @@ Argentum is a Game Boy Colour emulator written in Rust.
 Argentum uses SDL2. You don't need to install SDL2 as it is bundled with
 the emulator dependencies.
 
-The only requirements are that you have the _latest_ stable Rust compiler and
+The only requirements are that you have the _latest_ stable Rust compiler, CMake and
 a working C compiler.
 
 After ensuring the above, clone the repository and run `cargo build --release`. The binary will be created
