@@ -1,6 +1,6 @@
 # Argentum
 
-Argentum is a Game Boy Colour emulator written in Rust.
+Argentum is a Game Boy Color emulator written in Rust.
 
 <img src="./README/Pokemon.png" width="300"/> &nbsp;
 <img src="./README/Mario.png" width="300"/> &nbsp;
