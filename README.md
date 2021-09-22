@@ -29,6 +29,9 @@ You can check the CLI's help section for usage details.
 ./argentum-native --help
 ```
 
+The keybindings are as follows: `WASD` for the DPAD, `Z`, `X` for `A`, `B` respectively, `Enter` for Start and
+`Space` for Select.
+
 ## Features
 
 Argentum is certainly not perfect, but it supports the following features.
