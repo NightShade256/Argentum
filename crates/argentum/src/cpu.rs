@@ -231,7 +231,7 @@ impl Cpu {
     /// Handle all pending interrupts.
     /// Only one interrupt is serviced at one time.
     pub fn handle_interrupts(&mut self, bus: &mut Bus) {
-        let interrupts = bus.ie_reg & *bus.if_reg.borrow();
+        let interrupts = bus.ie_reg & bus.if_reg;
 
         // If there are pending interrupts, CPU should be
         // back up and running.
@@ -246,9 +246,9 @@ impl Cpu {
 
         if interrupts != 0 {
             for i in 0..5 {
-                if bit!(&bus.ie_reg, i) && bit!(bus.if_reg.borrow(), i) {
+                if bit!(&bus.ie_reg, i) && bit!(&bus.if_reg, i) {
                     // Disable the interrupt in IF.
-                    res!(bus.if_reg.borrow_mut(), i);
+                    res!(&mut bus.if_reg, i);
 
                     // Disable IME.
                     self.ime = false;

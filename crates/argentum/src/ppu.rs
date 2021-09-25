@@ -1,5 +1,3 @@
-use std::{cell::RefCell, rc::Rc};
-
 use crate::util::{bit, res, set};
 
 /// The colour palette used in DMG mode.
@@ -154,14 +152,11 @@ pub(crate) struct Ppu {
 
     /// RGB24 framebuffer, this is the front buffer.
     pub front_framebuffer: Box<[u8; 160 * 144 * 4]>,
-
-    /// Shared reference to IF register.
-    if_reg: Rc<RefCell<u8>>,
 }
 
 impl Ppu {
     /// Create a new `Ppu` instance.
-    pub fn new(if_reg: Rc<RefCell<u8>>, cgb_mode: bool) -> Self {
+    pub fn new(cgb_mode: bool) -> Self {
         Self {
             vram: [0; 0x4000],
             oam_ram: [0; 0xA0],
@@ -188,7 +183,6 @@ impl Ppu {
             total_cycles: 0,
             back_framebuffer: Box::new([0; 160 * 144 * 4]),
             front_framebuffer: Box::new([0; 160 * 144 * 4]),
-            if_reg,
         }
     }
 
@@ -285,7 +279,7 @@ impl Ppu {
     }
 
     /// Change the PPU's current mode.
-    fn change_mode(&mut self, mode: PpuMode) {
+    fn change_mode(&mut self, if_reg: &mut u8, mode: PpuMode) {
         self.current_mode = mode;
 
         match mode {
@@ -295,18 +289,18 @@ impl Ppu {
                 // Request STAT interrupt if HBlank bit
                 // in LCD STAT is set.
                 if bit!(&self.stat, 3) {
-                    set!(self.if_reg.borrow_mut(), 1);
+                    set!(if_reg, 1);
                 }
             }
 
             PpuMode::VBlank => {
                 // Request a VBlank interrupt.
-                set!(self.if_reg.borrow_mut(), 0);
+                set!(if_reg, 0);
 
                 // Request STAT interrupt if VBlank bit
                 // in LCD STAT is set.
                 if bit!(&self.stat, 4) {
-                    set!(self.if_reg.borrow_mut(), 1);
+                    set!(if_reg, 1);
                 }
             }
 
@@ -314,7 +308,7 @@ impl Ppu {
                 // Request STAT interrupt if OamSearch bit
                 // in LCD STAT is set.
                 if bit!(&self.stat, 5) {
-                    set!(self.if_reg.borrow_mut(), 1);
+                    set!(if_reg, 1);
                 }
             }
 
@@ -325,12 +319,12 @@ impl Ppu {
     /// Compare LY and LYC and if they are equal,
     /// set coincidence bit in LCD STAT and request
     /// a STAT interrupt (if enabled).
-    fn compare_lyc(&mut self) {
+    fn compare_lyc(&mut self, if_reg: &mut u8) {
         if self.ly == self.lyc {
             set!(&mut self.stat, 2);
 
             if bit!(&self.stat, 6) {
-                set!(self.if_reg.borrow_mut(), 1);
+                set!(if_reg, 1);
             }
         } else {
             res!(&mut self.stat, 2);
@@ -339,7 +333,7 @@ impl Ppu {
 
     /// Tick the PPU by 1 M cycle, and return a bool
     /// that tells if we have entered HBlank.
-    pub fn tick(&mut self, cycles: u32) -> bool {
+    pub fn tick(&mut self, if_reg: &mut u8, cycles: u32) -> bool {
         if !bit!(&self.lcdc, 7) {
             return false;
         }
@@ -354,12 +348,12 @@ impl Ppu {
         match self.current_mode {
             PpuMode::OamSearch if self.total_cycles >= 80 => {
                 self.total_cycles -= 80;
-                self.change_mode(PpuMode::Drawing);
+                self.change_mode(if_reg, PpuMode::Drawing);
             }
 
             PpuMode::Drawing if self.total_cycles >= 172 => {
                 self.total_cycles -= 172;
-                self.change_mode(PpuMode::HBlank);
+                self.change_mode(if_reg, PpuMode::HBlank);
 
                 if self.cgb_mode {
                     entered_hblank = true;
@@ -372,12 +366,12 @@ impl Ppu {
 
                 // LY 0x90 (144) signals end of one complete frame.
                 if self.ly == 0x90 {
-                    self.change_mode(PpuMode::VBlank);
+                    self.change_mode(if_reg, PpuMode::VBlank);
                 } else {
-                    self.change_mode(PpuMode::OamSearch);
+                    self.change_mode(if_reg, PpuMode::OamSearch);
                 }
 
-                self.compare_lyc();
+                self.compare_lyc(if_reg);
             }
 
             PpuMode::VBlank if self.total_cycles >= 456 => {
@@ -393,10 +387,10 @@ impl Ppu {
 
                     self.ly = 0;
                     self.window_line_counter = 0;
-                    self.change_mode(PpuMode::OamSearch);
+                    self.change_mode(if_reg, PpuMode::OamSearch);
                 }
 
-                self.compare_lyc();
+                self.compare_lyc(if_reg);
             }
 
             _ => {}

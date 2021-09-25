@@ -1,5 +1,3 @@
-use std::{cell::RefCell, rc::Rc};
-
 use crate::{audio::Apu, cartridge::*, joypad::Joypad, ppu::Ppu, timer::Timer};
 
 /// This is a custom bootrom for DMG
@@ -37,7 +35,7 @@ pub(crate) struct Bus {
     pub joypad: Joypad,
 
     /// $FF0F - IF register. (Set bits here to request interrupts).
-    pub if_reg: Rc<RefCell<u8>>,
+    pub if_reg: u8,
 
     /// $FFFF - IE register. (Set bits here to enable interrupts).
     pub ie_reg: u8,
@@ -94,19 +92,18 @@ impl Bus {
             _ => panic!("unsupported cartridge type"),
         };
 
-        let if_reg = Rc::new(RefCell::new(0));
         let cgb_mode = cartridge.has_cgb_support();
 
         Self {
             cartridge,
             work_ram: Box::new([0; 0x8000]),
             high_ram: Box::new([0; 0x7F]),
-            timer: Timer::new(Rc::clone(&if_reg)),
-            ppu: Ppu::new(Rc::clone(&if_reg), cgb_mode),
+            timer: Timer::new(),
+            ppu: Ppu::new(cgb_mode),
             apu: Apu::new(callback),
-            joypad: Joypad::new(Rc::clone(&if_reg)),
+            joypad: Joypad::new(),
             ie_reg: 0,
-            if_reg,
+            if_reg: 0,
             boot_reg: 0,
             cgb_mode,
             wram_bank: 1,
@@ -167,7 +164,7 @@ impl Bus {
             0xFF04..=0xFF07 => self.timer.read_byte(addr),
 
             // IF register.
-            0xFF0F => *self.if_reg.borrow(),
+            0xFF0F => self.if_reg,
 
             // APU's IO registers.
             0xFF10..=0xFF26 | 0xFF30..=0xFF3F => self.apu.read_byte(addr),
@@ -249,7 +246,7 @@ impl Bus {
             0xFF04..=0xFF07 => self.timer.write_byte(addr, value),
 
             // IF register.
-            0xFF0F => *self.if_reg.borrow_mut() = value,
+            0xFF0F => self.if_reg = value,
 
             // APU's IO registers.
             0xFF10..=0xFF26 | 0xFF30..=0xFF3F => self.apu.write_byte(addr, value),
@@ -376,10 +373,11 @@ impl Bus {
     pub fn tick(&mut self) {
         let cycles = 4 >> (self.is_double_speed() as u8);
 
-        self.timer.tick();
+        self.timer.tick(&mut self.if_reg);
         self.apu.tick(cycles);
+        self.joypad.update_interrupt_state(&mut self.if_reg);
 
-        let entered_hblank = self.ppu.tick(cycles);
+        let entered_hblank = self.ppu.tick(&mut self.if_reg, cycles);
 
         // If we entered HBlank and HDMA is active perform
         // a transfer of 0x10 bytes.

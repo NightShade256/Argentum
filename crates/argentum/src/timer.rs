@@ -1,5 +1,3 @@
-use std::{cell::RefCell, hint::unreachable_unchecked, rc::Rc};
-
 use crate::util::set;
 
 #[derive(Default)]
@@ -35,22 +33,16 @@ pub(crate) struct Timer {
 
     /// The T-cycles remaining for TIMA reload to occur, if any.
     tima_reload: Option<u8>,
-
-    /// Shared reference to IF register.
-    if_reg: Rc<RefCell<u8>>,
 }
 
 impl Timer {
     /// Create a new `Timer` instance.
-    pub fn new(if_reg: Rc<RefCell<u8>>) -> Self {
-        Self {
-            if_reg,
-            ..Self::default()
-        }
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Tick the timers and divider by 4 T-cycles.
-    pub fn tick(&mut self) {
+    pub fn tick(&mut self, if_reg: &mut u8) {
         if let Some(ref mut cycles) = self.tima_reload {
             if *cycles == 0 {
                 self.tima_reload = None;
@@ -59,7 +51,7 @@ impl Timer {
 
                 if *cycles == 0 {
                     self.tima = self.tma;
-                    set!(self.if_reg.borrow_mut(), 2);
+                    set!(if_reg, 2);
                 }
             }
         }
@@ -76,7 +68,7 @@ impl Timer {
             2 => 5,
             3 => 7,
 
-            _ => unsafe { unreachable_unchecked() },
+            _ => unreachable!(),
         };
 
         let and_result = (((self.div >> bit) & 0x01) as u8) & ((self.tac >> 2) & 0x01);
@@ -101,7 +93,7 @@ impl Timer {
             0xFF06 => self.tma,
             0xFF07 => self.tac | 0xF8,
 
-            _ => unsafe { unreachable_unchecked() },
+            _ => unreachable!(),
         }
     }
 
@@ -130,7 +122,7 @@ impl Timer {
                 self.check_falling_edge();
             }
 
-            _ => unsafe { unreachable_unchecked() },
+            _ => unreachable!(),
         }
     }
 }
