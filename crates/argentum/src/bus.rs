@@ -1,7 +1,7 @@
 use crate::{audio::Apu, cartridge::*, joypad::Joypad, ppu::Ppu, timer::Timer};
 
 mod dma;
-use self::dma::DmaController;
+use self::dma::CgbDma;
 
 /// This is a custom bootrom for DMG
 /// made by LIJI.
@@ -52,7 +52,7 @@ pub(crate) struct Bus {
     /// SVBK - WRAM Bank.
     pub wram_bank: usize,
 
-    pub dma: DmaController,
+    pub cgb_dma: CgbDma,
 
     /// $FF4D - KEY1.
     pub speed_reg: u8,
@@ -85,7 +85,7 @@ impl Bus {
             boot_reg: 0,
             cgb_mode,
             wram_bank: 1,
-            dma: DmaController::new(),
+            cgb_dma: CgbDma::new(),
             speed_reg: 0,
         }
     }
@@ -158,7 +158,7 @@ impl Bus {
             }
 
             // HDMA5.
-            0xFF51..=0xFF55 if self.cgb_mode => self.dma.read_byte(addr),
+            0xFF51..=0xFF55 if self.cgb_mode => self.cgb_dma.read_byte(addr),
 
             // SVBK.
             0xFF70 if self.cgb_mode => self.wram_bank as u8,
@@ -246,7 +246,7 @@ impl Bus {
                 }
             }
 
-            0xFF51..=0xFF55 if self.cgb_mode => self.dma.write_byte(addr, value),
+            0xFF51..=0xFF55 if self.cgb_mode => self.cgb_dma.write_byte(addr, value),
 
             0xFF70 if self.cgb_mode => {
                 let bank = (value & 0b111) as usize;
@@ -292,6 +292,6 @@ impl Bus {
         self.joypad.update_interrupt_state(&mut self.if_reg);
 
         let hblank = self.ppu.tick(&mut self.if_reg, cycles);
-        self.tick_dma_controller(hblank);
+        self.tick_cgb_dma(hblank);
     }
 }
