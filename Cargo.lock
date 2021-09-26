@@ -50,6 +50,7 @@ name = "argentum"
 version = "0.4.3"
 dependencies = [
  "bitflags",
+ "bytemuck",
 ]
 
 [[package]]

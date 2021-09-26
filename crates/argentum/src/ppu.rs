@@ -409,10 +409,7 @@ impl Ppu {
     /// coordinates.
     fn set_pixel(&mut self, x: u8, y: u8, colour: u32) {
         let offset = ((y as usize * 160) + x as usize) * 4;
-
-        unsafe {
-            *(self.back_framebuffer.as_mut_ptr().add(offset) as *mut u32) = colour;
-        }
+        *(bytemuck::from_bytes_mut::<u32>(&mut self.back_framebuffer[offset..offset + 4])) = colour;
     }
 
     /// Scale the CGB 5 bit RGB to standard 8 bit RGB.
@@ -611,7 +608,7 @@ impl Ppu {
             }
 
             let mut sprite: Sprite =
-                unsafe { (*(self.oam_ram.as_ptr().add(i) as *const [u8; 4])).into() };
+                (*bytemuck::from_bytes::<[u8; 4]>(&self.oam_ram[i..i + 4])).into();
 
             sprite.y = sprite.y.wrapping_sub(16);
             sprite.x = sprite.x.wrapping_sub(8);
