@@ -93,7 +93,7 @@ impl Cpu {
     /// Tick all components attached to the bus by one M cycle.
     pub fn internal_cycle(&mut self, bus: &mut Bus) {
         self.cycles += 4;
-        bus.tick();
+        bus.tick(4);
     }
 
     /// Read a R16 by specifiying the group and its index.

@@ -42,22 +42,24 @@ impl Timer {
     }
 
     /// Tick the timers and divider by 4 T-cycles.
-    pub fn tick(&mut self, if_reg: &mut u8) {
-        if let Some(ref mut cycles) = self.tima_reload {
-            if *cycles == 0 {
-                self.tima_reload = None;
-            } else {
-                *cycles -= 4;
-
+    pub fn tick(&mut self, if_reg: &mut u8, cycles: u32) {
+        for _ in 0..cycles {
+            if let Some(ref mut cycles) = self.tima_reload {
                 if *cycles == 0 {
-                    self.tima = self.tma;
-                    set!(if_reg, 2);
+                    self.tima_reload = None;
+                } else {
+                    *cycles -= 4;
+
+                    if *cycles == 0 {
+                        self.tima = self.tma;
+                        set!(if_reg, 2);
+                    }
                 }
             }
-        }
 
-        self.div = self.div.wrapping_add(4);
-        self.check_falling_edge();
+            self.div = self.div.wrapping_add(4);
+            self.check_falling_edge();
+        }
     }
 
     /// Check for a falling edge on the selected bit of DIV.

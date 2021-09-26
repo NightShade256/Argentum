@@ -173,7 +173,7 @@ impl Bus {
         };
 
         if tick {
-            self.tick();
+            self.tick(4);
         }
 
         value
@@ -264,7 +264,7 @@ impl Bus {
         }
 
         if tick {
-            self.tick();
+            self.tick(4);
         }
     }
 
@@ -284,10 +284,10 @@ impl Bus {
     }
 
     /// Tick the components on the Bus.
-    pub fn tick(&mut self) {
-        let cycles = 4 >> (self.is_double_speed() as u8);
+    pub fn tick(&mut self, cycles: u32) {
+        let cycles = cycles >> (self.is_double_speed() as u8);
 
-        self.timer.tick(&mut self.if_reg);
+        self.timer.tick(&mut self.if_reg, cycles >> 2);
         self.apu.tick(cycles);
         self.joypad.update_interrupt_state(&mut self.if_reg);
 
