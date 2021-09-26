@@ -1,4 +1,4 @@
-use crate::util::set;
+use crate::helpers::set;
 
 #[derive(Default)]
 pub(crate) struct Timer {

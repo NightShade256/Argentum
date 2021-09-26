@@ -1,4 +1,4 @@
-use crate::util::{bit, res, set};
+use crate::helpers::{bit, res, set};
 
 /// The colour palette used in DMG mode.
 /// 0 - White

@@ -9,7 +9,7 @@ use std::fmt::{Display, Formatter, Result};
 use self::registers::Registers;
 use crate::{
     bus::Bus,
-    util::{bit, res},
+    helpers::{bit, res},
 };
 
 /// Enumerates all the states the CPU can be in.

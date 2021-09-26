@@ -1,4 +1,4 @@
-use crate::util::set;
+use crate::helpers::set;
 
 /// Enumerates all possible keys that are present on the
 /// Game Boy and Game Boy Color.
