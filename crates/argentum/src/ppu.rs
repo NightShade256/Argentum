@@ -51,13 +51,13 @@ pub(crate) struct Ppu {
     /// Mapped to 0x8000 to 0x9FFF.
     /// Capacity for two complete banks, but only 1 is used
     /// in DMG mode.
-    vram: [u8; 0x4000],
+    vram: Box<[u8; 0x4000]>,
 
     /// 160 B of OAM RAM.
     ///
     /// Mapped to 0xFE00 to 0xFE9F.
     /// Space for 40 sprite entries.
-    oam_ram: [u8; 0xA0],
+    oam_ram: Box<[u8; 0xA0]>,
 
     /// 0xFF40 - LCD Control.
     ///
@@ -158,8 +158,8 @@ impl Ppu {
     /// Create a new `Ppu` instance.
     pub fn new(cgb_mode: bool) -> Self {
         Self {
-            vram: [0; 0x4000],
-            oam_ram: [0; 0xA0],
+            vram: Box::new([0; 0x4000]),
+            oam_ram: Box::new([0; 0xA0]),
             ly: 0,
             lyc: 0,
             lcdc: 0x91,
