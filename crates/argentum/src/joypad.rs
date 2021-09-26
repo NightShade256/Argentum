@@ -48,6 +48,7 @@ impl Joypad {
     /// Register a particular key as being pressed.
     pub fn key_down(&mut self, key: ArgentumKey) {
         self.joypad_state |= key as u8;
+        self.interrupt_requested = true;
     }
 
     /// Register a particular key as being released.
