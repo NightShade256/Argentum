@@ -285,13 +285,13 @@ impl Bus {
 
     /// Tick the components on the Bus.
     pub fn tick(&mut self, cycles: u32) {
-        let cycles = cycles >> (self.is_double_speed() as u8);
+        let relative_cycles = cycles >> (self.is_double_speed() as u8);
 
-        self.timer.tick(&mut self.if_reg, cycles >> 2);
-        self.apu.tick(cycles);
+        self.timer.tick(&mut self.if_reg, cycles);
+        self.apu.tick(relative_cycles);
         self.joypad.update_interrupt_state(&mut self.if_reg);
 
-        let hblank = self.ppu.tick(&mut self.if_reg, cycles);
+        let hblank = self.ppu.tick(&mut self.if_reg, relative_cycles);
         self.tick_cgb_dma(hblank);
     }
 }

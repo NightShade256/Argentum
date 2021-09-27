@@ -1,6 +1,6 @@
 use crate::helpers::set;
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct Timer {
     /// 0xFF04 - Divider Register.
     ///
@@ -41,14 +41,14 @@ impl Timer {
         Self::default()
     }
 
-    /// Tick the timers and divider by 4 T-cycles.
+    /// Tick the timers and divider by the given amount of T-cycles.
     pub fn tick(&mut self, if_reg: &mut u8, cycles: u32) {
         for _ in 0..cycles {
             if let Some(ref mut cycles) = self.tima_reload {
                 if *cycles == 0 {
                     self.tima_reload = None;
                 } else {
-                    *cycles -= 4;
+                    *cycles -= 1;
 
                     if *cycles == 0 {
                         self.tima = self.tma;
@@ -57,7 +57,7 @@ impl Timer {
                 }
             }
 
-            self.div = self.div.wrapping_add(4);
+            self.div = self.div.wrapping_add(1);
             self.check_falling_edge();
         }
     }
