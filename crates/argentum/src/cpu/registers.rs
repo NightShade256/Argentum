@@ -1,21 +1,7 @@
-//! Helper functions for reading, writing registers.
-
-use bitflags::bitflags;
-
-bitflags! {
-    pub struct Flags: u8 {
-        const Z = 1 << 7;
-        const N = 1 << 6;
-        const H = 1 << 5;
-        const C = 1 << 4;
-    }
-}
-
+#[derive(Debug, Default)]
 pub struct Registers {
-    // Accumulator.
+    // General Purpose Registers
     pub a: u8,
-
-    // General Purpose Registers.
     pub b: u8,
     pub c: u8,
     pub d: u8,
@@ -23,10 +9,13 @@ pub struct Registers {
     pub h: u8,
     pub l: u8,
 
-    // Flag Register.
-    pub f: Flags,
+    // Flags
+    pub zf: bool,
+    pub nf: bool,
+    pub hf: bool,
+    pub cf: bool,
 
-    // Stack Pointer, and Program Counter.
+    // Stack Pointer and Program Counter
     pub sp: u16,
     pub pc: u16,
 }
@@ -34,23 +23,29 @@ pub struct Registers {
 impl Registers {
     /// Create a new `Registers` instance.
     pub fn new() -> Self {
-        Self {
-            a: 0,
-            b: 0,
-            c: 0,
-            d: 0,
-            e: 0,
-            f: Flags::empty(),
-            h: 0,
-            l: 0,
-            sp: 0,
-            pc: 0,
+        Self::default()
+    }
+
+    /// Check if the given condition is true.
+    pub fn check_condition(&self, condition: u8) -> bool {
+        match condition {
+            0 => !self.zf,
+            1 => self.zf,
+            2 => !self.cf,
+            3 => self.cf,
+
+            _ => unreachable!(),
         }
     }
 
     #[inline]
     pub fn get_af(&self) -> u16 {
-        ((self.a as u16) << 8) | self.f.bits() as u16
+        let self_f = ((self.zf as u8) << 7)
+            | ((self.nf as u8) << 6)
+            | ((self.hf as u8) << 5)
+            | ((self.cf as u8) << 4);
+
+        ((self.a as u16) << 8) | self_f as u16
     }
 
     #[inline]
@@ -71,7 +66,11 @@ impl Registers {
     #[inline]
     pub fn set_af(&mut self, value: u16) {
         self.a = (value >> 8) as u8;
-        self.f = Flags::from_bits_truncate(value as u8);
+
+        self.zf = ((value >> 7) & 0x01) != 0;
+        self.nf = ((value >> 6) & 0x01) != 0;
+        self.hf = ((value >> 5) & 0x01) != 0;
+        self.cf = ((value >> 4) & 0x01) != 0;
     }
 
     #[inline]
@@ -90,15 +89,5 @@ impl Registers {
     pub fn set_hl(&mut self, value: u16) {
         self.h = (value >> 8) as u8;
         self.l = value as u8;
-    }
-
-    #[inline]
-    pub fn get_flag(&self, flag: Flags) -> bool {
-        self.f.contains(flag)
-    }
-
-    #[inline]
-    pub fn set_flag(&mut self, flag: Flags, value: bool) {
-        self.f.set(flag, value);
     }
 }
