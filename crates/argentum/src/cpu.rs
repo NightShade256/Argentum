@@ -20,21 +20,21 @@ pub enum CpuState {
 /// Implementation of the Sharp SM83 CPU.
 pub(crate) struct Cpu {
     /// All the registers associated with the CPU.
-    pub reg: Registers,
+    reg: Registers,
 
     /// The Interrupt Master Enable flag.
     /// Interrupts are serviced iff this flag is enabled.
-    pub ime: bool,
+    ime: bool,
 
     /// The state the CPU is in.
-    pub state: CpuState,
+    state: CpuState,
 
     /// The amount of cycles spent executing the current
     /// instruction.
-    pub cycles: u32,
+    cycles: u32,
 
     /// Are we currently in double speed mode?
-    pub is_double_speed: bool,
+    is_double_speed: bool,
 }
 
 impl Cpu {
@@ -47,6 +47,24 @@ impl Cpu {
             cycles: 0,
             is_double_speed: false,
         }
+    }
+
+    /// Initalize the CPU to post-bootrom state.
+    pub fn skip_bootrom(&mut self, is_cgb: bool) {
+        if is_cgb {
+            self.reg.set_af(0x1180);
+            self.reg.set_bc(0x0000);
+            self.reg.set_de(0xFF56);
+            self.reg.set_hl(0x000D);
+        } else {
+            self.reg.set_af(0x01B0);
+            self.reg.set_bc(0x0013);
+            self.reg.set_de(0x00D8);
+            self.reg.set_hl(0x014D);
+        }
+
+        self.reg.sp = 0xFFFE;
+        self.reg.pc = 0x0100;
     }
 
     /// A wrapper function over `Bus::read_byte`. This function should be
@@ -74,25 +92,6 @@ impl Cpu {
     pub fn imm_byte(&mut self, bus: &mut Bus) -> u8 {
         self.reg.pc = self.reg.pc.wrapping_add(1);
         self.read_byte(bus, self.reg.pc.wrapping_sub(1))
-    }
-
-    /// Skips the bootrom, and initializes default values for
-    /// registers.
-    pub fn skip_bootrom(&mut self, cgb: bool) {
-        if cgb {
-            self.reg.set_af(0x1180);
-            self.reg.set_bc(0x0000);
-            self.reg.set_de(0xFF56);
-            self.reg.set_hl(0x000D);
-        } else {
-            self.reg.set_af(0x01B0);
-            self.reg.set_bc(0x0013);
-            self.reg.set_de(0x00D8);
-            self.reg.set_hl(0x014D);
-        }
-
-        self.reg.sp = 0xFFFE;
-        self.reg.pc = 0x0100;
     }
 
     /// Handle all pending interrupts.
