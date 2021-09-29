@@ -49,28 +49,31 @@ impl Cpu {
         }
     }
 
+    /// A wrapper function over `Bus::read_byte`. This function should be
+    /// called and not the other in all CPU instruction handlers.
     pub fn read_byte(&mut self, bus: &mut Bus, addr: u16) -> u8 {
         self.cycles += 4;
         bus.read_byte(addr, true)
     }
 
+    /// A wrapper function over `Bus::write_byte`. This function should be
+    /// called and not the other in all CPU instruction handlers.
     pub fn write_byte(&mut self, bus: &mut Bus, addr: u16, value: u8) {
         self.cycles += 4;
         bus.write_byte(addr, value, true);
     }
 
-    /// Read a byte from the current PC address.
-    pub fn imm_byte(&mut self, bus: &mut Bus) -> u8 {
-        let value = self.read_byte(bus, self.reg.pc);
-        self.reg.pc = self.reg.pc.wrapping_add(1);
-
-        value
-    }
-
-    /// Tick all components attached to the bus by one M cycle.
+    /// Execute an internal cycle (used when doing 16-bit arithmetic or jumps).
     pub fn internal_cycle(&mut self, bus: &mut Bus) {
         self.cycles += 4;
         bus.tick(4);
+    }
+
+    /// Read a byte from the address contained within the PC, and increment
+    /// PC afterwards.
+    pub fn imm_byte(&mut self, bus: &mut Bus) -> u8 {
+        self.reg.pc = self.reg.pc.wrapping_add(1);
+        self.read_byte(bus, self.reg.pc.wrapping_sub(1))
     }
 
     /// Skips the bootrom, and initializes default values for
