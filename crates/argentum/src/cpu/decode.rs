@@ -6,11 +6,8 @@ impl Cpu {
     pub fn decode_and_execute(&mut self, bus: &mut Bus, instruction: u8) {
         match instruction {
             0x00 => self.nop(),
-
             0x08 => self.ld_u16_sp(bus),
-
             0x10 => self.stop(bus),
-
             0x18 => self.unconditional_jr(bus),
 
             0x20 | 0x28 | 0x30 | 0x38 => {
@@ -126,11 +123,8 @@ impl Cpu {
             }
 
             0xE0 => self.ld_io_u8_a(bus),
-
             0xE8 => self.add_sp_i8(bus),
-
             0xF0 => self.ld_a_io_u8(bus),
-
             0xF8 => self.ld_hl_sp_i8(bus),
 
             0xC1 | 0xD1 | 0xE1 | 0xF1 => {
@@ -140,11 +134,8 @@ impl Cpu {
             }
 
             0xC9 => self.unconditional_ret(bus),
-
             0xD9 => self.reti(bus),
-
             0xE9 => self.jp_hl(),
-
             0xF9 => self.ld_sp_hl(bus),
 
             0xC2 | 0xD2 | 0xCA | 0xDA => {
@@ -154,13 +145,9 @@ impl Cpu {
             }
 
             0xE2 => self.ld_io_c_a(bus),
-
             0xEA => self.ld_u16_a(bus),
-
             0xF2 => self.ld_a_io_c(bus),
-
             0xFA => self.ld_a_u16(bus),
-
             0xC3 => self.unconditional_jp(bus),
 
             0xCB => {
@@ -209,7 +196,6 @@ impl Cpu {
             }
 
             0xF3 => self.di(),
-
             0xFB => self.ei(),
 
             0xC4 | 0xCC | 0xD4 | 0xDC => {
