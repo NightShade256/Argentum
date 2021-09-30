@@ -1,6 +1,7 @@
 use crate::{audio::Apu, cartridge::*, joypad::Joypad, ppu::Ppu, timer::Timer};
 
 mod dma;
+mod interrupts;
 mod speed_switch;
 
 use self::dma::CgbDma;

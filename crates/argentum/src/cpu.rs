@@ -90,36 +90,30 @@ impl Cpu {
         self.read_byte(bus, self.reg.pc.wrapping_sub(1))
     }
 
-    /// Handle all pending interrupts.
-    /// Only one interrupt is serviced at one time.
+    /// Handle pending interrupts (if any) one at a time.
     pub fn handle_interrupts(&mut self, bus: &mut Bus) {
-        let interrupts = bus.ie_reg & bus.if_reg;
+        let if_reg = bus.get_if();
+        let ie_reg = bus.get_ie();
 
-        // If there are pending interrupts, CPU should be
-        // back up and running.
-        if interrupts != 0 {
+        let interrupts = *ie_reg & *if_reg;
+
+        if self.state == CpuState::Halted && interrupts != 0 {
             self.state = CpuState::Running;
         }
 
-        // If IME is not enabled, we don't service the interrupt.
         if !self.ime {
             return;
         }
 
         if interrupts != 0 {
             for i in 0..5 {
-                if bit!(&bus.ie_reg, i) && bit!(&bus.if_reg, i) {
-                    // Disable the interrupt in IF.
-                    res!(&mut bus.if_reg, i);
-
-                    // Disable IME.
+                if bit!(ie_reg, i) && bit!(if_reg, i) {
+                    res!(bus.get_if_mut(), i);
                     self.ime = false;
 
-                    // Two wait states are executed every ISR.
                     self.internal_cycle(bus);
                     self.internal_cycle(bus);
 
-                    // Push PC onto the stack.
                     let [lower, upper] = self.reg.pc.to_le_bytes();
 
                     self.reg.sp = self.reg.sp.wrapping_sub(1);
@@ -128,38 +122,26 @@ impl Cpu {
                     self.reg.sp = self.reg.sp.wrapping_sub(1);
                     self.write_byte(bus, self.reg.sp, lower);
 
-                    // 0x40 - VBLANK
-                    // 0x48 - LCD STAT
-                    // 0x50 - Timer
-                    // 0x58 - Serial
-                    // 0x60 - Joypad
                     self.reg.pc = 0x40 + (0x08 * i);
                     self.internal_cycle(bus);
 
-                    // Service only one interrupt at a time.
-                    break;
+                    return;
                 }
             }
         }
     }
 
-    /// Execute the next opcode, while checking for interrupts.
-    /// Return the amount of cycles it took to execute the instruction.
+    /// Execute the next instruction, while checking for interrupts and
+    /// return the amount of cycles it took to execute the instruction.
     pub fn execute_next(&mut self, bus: &mut Bus) -> u32 {
         self.cycles = 0;
-
-        // Handle pending interrupts.
         self.handle_interrupts(bus);
 
-        // If the CPU is in HALT state, it just burns one M cycle.
         if self.state == CpuState::Halted {
             self.internal_cycle(bus);
         } else {
-            // Fetch the opcode.
-            let opcode = self.imm_byte(bus);
-
-            // Decode and execute it.
-            self.decode_and_execute(bus, opcode);
+            let instruction = self.imm_byte(bus);
+            self.decode_and_execute(bus, instruction);
         }
 
         self.cycles
