@@ -1,5 +1,5 @@
+use super::{Cpu, CpuState};
 use crate::bus::Bus;
-use crate::cpu::Cpu;
 
 impl Cpu {
     pub fn nop(&self) {}
@@ -211,6 +211,10 @@ impl Cpu {
         self.reg.cf = !self.reg.cf;
     }
 
+    pub fn halt(&mut self) {
+        self.state = CpuState::Halted;
+    }
+
     pub fn ld_r8_r8(&mut self, bus: &mut Bus, src: u8, dst: u8) {
         let value = self.read_r8(bus, src);
 
@@ -411,6 +415,36 @@ impl Cpu {
         }
     }
 
+    pub fn ld_io_c_a(&mut self, bus: &mut Bus) {
+        let address = (0xFF00u16).wrapping_add(self.reg.c as u16);
+
+        self.write_byte(bus, address, self.reg.a);
+    }
+
+    pub fn ld_u16_a(&mut self, bus: &mut Bus) {
+        let lower = self.imm_byte(bus);
+        let upper = self.imm_byte(bus);
+
+        let address = u16::from_le_bytes([lower, upper]);
+
+        self.write_byte(bus, address, self.reg.a);
+    }
+
+    pub fn ld_a_io_c(&mut self, bus: &mut Bus) {
+        let address = (0xFF00u16).wrapping_add(self.reg.c as u16);
+
+        self.reg.a = self.read_byte(bus, address);
+    }
+
+    pub fn ld_a_u16(&mut self, bus: &mut Bus) {
+        let lower = self.imm_byte(bus);
+        let upper = self.imm_byte(bus);
+
+        let address = u16::from_le_bytes([lower, upper]);
+
+        self.reg.a = self.read_byte(bus, address);
+    }
+
     pub fn rlc_r8(&mut self, bus: &mut Bus, r8: u8) {
         let value = self.read_r8(bus, r8);
         let result = value.rotate_left(1);
@@ -571,6 +605,14 @@ impl Cpu {
         self.reg.pc = address;
     }
 
+    pub fn ei(&mut self) {
+        self.ime = true;
+    }
+
+    pub fn di(&mut self) {
+        self.ime = false;
+    }
+
     pub fn push_r16(&mut self, bus: &mut Bus, r16: u8) {
         let value = self.read_r16::<3>(r16);
         let [lower, upper] = value.to_le_bytes();
@@ -582,5 +624,19 @@ impl Cpu {
 
         self.reg.sp = self.reg.sp.wrapping_sub(1);
         self.write_byte(bus, self.reg.sp, lower);
+    }
+
+    pub fn rst(&mut self, bus: &mut Bus, vec: u16) {
+        let [lower, upper] = self.reg.pc.to_le_bytes();
+
+        self.internal_cycle(bus);
+
+        self.reg.sp = self.reg.sp.wrapping_sub(1);
+        self.write_byte(bus, self.reg.sp, upper);
+
+        self.reg.sp = self.reg.sp.wrapping_sub(1);
+        self.write_byte(bus, self.reg.sp, lower);
+
+        self.reg.pc = vec;
     }
 }
