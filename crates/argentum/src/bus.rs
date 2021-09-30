@@ -280,8 +280,6 @@ impl Bus {
         self.boot_reg = 1;
     }
 
-
-
     /// Tick the components on the Bus.
     pub fn tick(&mut self, cycles: u32) {
         let relative_cycles = cycles >> (self.is_double_speed() as u8);
