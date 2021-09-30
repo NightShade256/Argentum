@@ -13,9 +13,11 @@ pub struct Argentum {
 impl Argentum {
     /// Create a new `Argentum` instance.
     pub fn new(rom: &[u8], callback: Box<dyn Fn(&[f32])>, save_file: Option<Vec<u8>>) -> Self {
+        let bus = Bus::new(rom, callback, save_file);
+
         Self {
-            bus: Bus::new(rom, callback, save_file),
-            cpu: Cpu::new(),
+            cpu: Cpu::new(bus.cgb_mode),
+            bus,
         }
     }
 

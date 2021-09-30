@@ -1,6 +1,8 @@
 use crate::{audio::Apu, cartridge::*, joypad::Joypad, ppu::Ppu, timer::Timer};
 
 mod dma;
+mod speed_switch;
+
 use self::dma::CgbDma;
 
 /// This is a custom bootrom for DMG
@@ -55,7 +57,7 @@ pub(crate) struct Bus {
     pub cgb_dma: CgbDma,
 
     /// $FF4D - KEY1.
-    pub speed_reg: u8,
+    pub key1: u8,
 }
 
 impl Bus {
@@ -86,7 +88,7 @@ impl Bus {
             cgb_mode,
             wram_bank: 1,
             cgb_dma: CgbDma::new(),
-            speed_reg: 0,
+            key1: 0,
         }
     }
 
@@ -147,7 +149,7 @@ impl Bus {
             // DMA transfer request.
             0xFF46 => 0xFF,
 
-            0xFF4D => self.speed_reg,
+            0xFF4D => self.key1,
 
             0xFF50 => {
                 if self.boot_reg != 0 {
@@ -237,7 +239,7 @@ impl Bus {
                 }
             }
 
-            0xFF4D => self.speed_reg = value & 0b0000_0001,
+            0xFF4D => self.key1 = value & 0b0000_0001,
 
             // BOOT register.
             0xFF50 => {
@@ -278,10 +280,7 @@ impl Bus {
         self.boot_reg = 1;
     }
 
-    /// Check if we are in double speed mode.
-    pub fn is_double_speed(&self) -> bool {
-        (self.speed_reg & 0b1000_0000) != 0
-    }
+
 
     /// Tick the components on the Bus.
     pub fn tick(&mut self, cycles: u32) {

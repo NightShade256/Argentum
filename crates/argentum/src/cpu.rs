@@ -1,5 +1,3 @@
-//! Implementation of the Sharp SM83 CPU core.
-
 mod decode;
 mod instructions;
 mod registers;
@@ -19,33 +17,31 @@ pub enum CpuState {
 
 /// Implementation of the Sharp SM83 CPU.
 pub(crate) struct Cpu {
-    /// All the registers associated with the CPU.
-    reg: Registers,
-
-    /// The Interrupt Master Enable flag.
-    /// Interrupts are serviced iff this flag is enabled.
-    ime: bool,
-
-    /// The state the CPU is in.
-    state: CpuState,
-
-    /// The amount of cycles spent executing the current
-    /// instruction.
+    /// The amount of T-cycles taken by the current instruction.
     cycles: u32,
 
-    /// Are we currently in double speed mode?
-    is_double_speed: bool,
+    /// The Interrupt Master Enable flag.
+    ime: bool,
+
+    /// Indicates whether we are emulating the CGB or the DMG.
+    is_cgb: bool,
+
+    /// Registers associated with the CPU.
+    reg: Registers,
+
+    /// The current CPU state.
+    state: CpuState,
 }
 
 impl Cpu {
     /// Create a new `CPU` instance.
-    pub fn new() -> Self {
+    pub fn new(is_cgb: bool) -> Self {
         Self {
-            reg: Registers::new(),
-            ime: false,
-            state: CpuState::Running,
             cycles: 0,
-            is_double_speed: false,
+            ime: false,
+            is_cgb,
+            reg: Registers::new(),
+            state: CpuState::Running,
         }
     }
 
@@ -166,6 +162,6 @@ impl Cpu {
             self.decode_and_execute(bus, opcode);
         }
 
-        self.cycles >> (self.is_double_speed as u8)
+        self.cycles
     }
 }

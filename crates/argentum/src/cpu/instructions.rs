@@ -17,19 +17,11 @@ impl Cpu {
     }
 
     pub fn stop(&mut self, bus: &mut Bus) {
-        if bus.cgb_mode && (bus.speed_reg & 0x01) != 0 {
-            if self.is_double_speed {
-                self.is_double_speed = false;
-
-                bus.speed_reg = 0b0111_1110;
-            } else {
-                self.is_double_speed = true;
-
-                bus.speed_reg = 0b1111_1110;
-            }
+        if self.is_cgb && bus.is_preparing_switch() {
+            bus.perform_speed_switch();
         }
 
-        self.reg.pc += 1;
+        self.reg.pc = self.reg.pc.wrapping_add(1);
     }
 
     pub fn unconditional_jr(&mut self, bus: &mut Bus) {
