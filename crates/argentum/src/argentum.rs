@@ -16,7 +16,7 @@ impl Argentum {
         let bus = Bus::new(rom, callback, save_file);
 
         Self {
-            cpu: Cpu::new(bus.cgb_mode),
+            cpu: Cpu::new(bus.is_cgb),
             bus,
         }
     }
@@ -36,7 +36,7 @@ impl Argentum {
     }
 
     pub fn skip_bootrom(&mut self) {
-        self.cpu.skip_bootrom(self.bus.cgb_mode);
+        self.cpu.skip_bootrom(self.bus.is_cgb);
         self.bus.skip_bootrom();
     }
 

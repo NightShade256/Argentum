@@ -108,7 +108,7 @@ pub struct Ppu {
 
     /// Indicates whether we should emulate DMG or
     /// CGB behaviour.
-    cgb_mode: bool,
+    is_cgb: bool,
 
     /// 0xFF68 - BCPS.
     ///
@@ -156,7 +156,7 @@ pub struct Ppu {
 
 impl Ppu {
     /// Create a new `Ppu` instance.
-    pub fn new(cgb_mode: bool) -> Self {
+    pub fn new(is_cgb: bool) -> Self {
         Self {
             vram: Box::new([0; 0x4000]),
             oam_ram: Box::new([0; 0xA0]),
@@ -172,7 +172,7 @@ impl Ppu {
             wx: 0,
             wy: 0,
             window_line_counter: 0,
-            cgb_mode,
+            is_cgb,
             bcps: 0,
             bgd_palettes: [0; 0x40],
             ocps: 0,
@@ -192,7 +192,7 @@ impl Ppu {
             0x8000..=0x9FFF => {
                 let offset = (addr - 0x8000) as usize;
 
-                if self.cgb_mode && self.vram_banked {
+                if self.is_cgb && self.vram_banked {
                     self.vram[offset + 0x2000]
                 } else {
                     self.vram[offset]
@@ -229,7 +229,7 @@ impl Ppu {
             0x8000..=0x9FFF => {
                 let offset = (addr - 0x8000) as usize;
 
-                if self.cgb_mode && self.vram_banked {
+                if self.is_cgb && self.vram_banked {
                     self.vram[offset + 0x2000] = value;
                 } else {
                     self.vram[offset] = value;
@@ -355,7 +355,7 @@ impl Ppu {
                 self.total_cycles -= 172;
                 self.change_mode(if_reg, PpuMode::HBlank);
 
-                if self.cgb_mode {
+                if self.is_cgb {
                     entered_hblank = true;
                 }
             }
@@ -442,7 +442,7 @@ impl Ppu {
     fn render_background(&mut self) {
         // The 0th bit of the LCDC in DMG mode when zero disables all forms
         // of background and window rendering.
-        if !self.lcdc.bit(0) && !self.cgb_mode {
+        if !self.lcdc.bit(0) && !self.is_cgb {
             return;
         }
 
@@ -499,13 +499,13 @@ impl Ppu {
 
             // If we are in CGB mode, check if we need to flip
             // the tile over the Y axis.
-            if self.cgb_mode && cgb_bgd_attrs.bit(6) {
+            if self.is_cgb && cgb_bgd_attrs.bit(6) {
                 tile_y = 7 - tile_y;
             }
 
             // If we are in CGB mode, check if we need to flip
             // the tile over the X axis.
-            if self.cgb_mode && !cgb_bgd_attrs.bit(5) {
+            if self.is_cgb && !cgb_bgd_attrs.bit(5) {
                 tile_x = 7 - tile_x;
             }
 
@@ -524,7 +524,7 @@ impl Ppu {
                     .wrapping_add((tile_y << 1) as u16)
             } as usize;
 
-            if !self.cgb_mode {
+            if !self.is_cgb {
                 // Extract the colour data pertaining to the row.
                 let lsb = self.vram[tile_address];
                 let msb = self.vram[tile_address + 1];
@@ -626,7 +626,7 @@ impl Ppu {
         //    over the sprite with same X coordinates.
         sprites.reverse();
 
-        if !self.cgb_mode {
+        if !self.is_cgb {
             sprites.sort_by(|&a, &b| b.x.cmp(&a.x));
         }
 
@@ -652,7 +652,7 @@ impl Ppu {
 
             // The VRAM bank to use for getting the sprite tile in
             // CGB mode.
-            let vram_offset = if self.cgb_mode && sprite_attr.bit(3) {
+            let vram_offset = if self.is_cgb && sprite_attr.bit(3) {
                 0x2000
             } else {
                 0x0000
@@ -690,7 +690,7 @@ impl Ppu {
                     };
 
                     // Extract the actual RGB colour.
-                    let colour = if self.cgb_mode {
+                    let colour = if self.is_cgb {
                         let palette_offset = (colour_palette * 8) + (colour_index as usize * 2);
 
                         let cgb_colour = ((self.obj_palettes[palette_offset + 1] as u16) << 8)
@@ -703,7 +703,7 @@ impl Ppu {
 
                     // We don't draw pixels that are transparent.
                     if colour_index != 0 {
-                        if self.cgb_mode {
+                        if self.is_cgb {
                             if !self.lcdc.bit(0)
                                 || (self.bgd_line[actual_x as usize].0 == 0)
                                 || (!self.bgd_line[actual_x as usize].1 && sprite_over_bg)

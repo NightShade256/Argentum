@@ -44,7 +44,7 @@ pub struct Bus {
     pub boot_reg: u8,
 
     /// Is CGB mode enabled or not.
-    pub cgb_mode: bool,
+    pub is_cgb: bool,
 
     /// SVBK - WRAM Bank.
     pub wram_bank: usize,
@@ -67,20 +67,20 @@ impl Bus {
             _ => panic!("unsupported cartridge type"),
         };
 
-        let cgb_mode = cartridge.has_cgb_support();
+        let is_cgb = cartridge.has_cgb_support();
 
         Self {
             cartridge,
             work_ram: Box::new([0; 0x8000]),
             high_ram: Box::new([0; 0x7F]),
-            timer: Timer::new(cgb_mode),
-            ppu: Ppu::new(cgb_mode),
+            timer: Timer::new(is_cgb),
+            ppu: Ppu::new(is_cgb),
             apu: Apu::new(callback),
             joypad: Joypad::new(),
             ie_reg: 0,
             if_reg: 0,
             boot_reg: 0,
-            cgb_mode,
+            is_cgb,
             wram_bank: 1,
             cgb_dma: CgbDma::new(),
             key1: 0,
@@ -92,14 +92,14 @@ impl Bus {
     pub fn read_byte(&mut self, addr: u16, tick: bool) -> u8 {
         let value = match addr {
             0x0000..=0x00FF if self.boot_reg == 0 => {
-                if self.cgb_mode {
+                if self.is_cgb {
                     CGB_BOOT_ROM[addr as usize]
                 } else {
                     DMG_BOOT_ROM[addr as usize]
                 }
             }
 
-            0x0200..=0x08FF if self.boot_reg == 0 && self.cgb_mode => CGB_BOOT_ROM[addr as usize],
+            0x0200..=0x08FF if self.boot_reg == 0 && self.is_cgb => CGB_BOOT_ROM[addr as usize],
 
             // ROM Banks.
             0x0000..=0x7FFF => self.cartridge.read_byte(addr),
@@ -155,10 +155,10 @@ impl Bus {
             }
 
             // HDMA5.
-            0xFF51..=0xFF55 if self.cgb_mode => self.cgb_dma.read_byte(addr),
+            0xFF51..=0xFF55 if self.is_cgb => self.cgb_dma.read_byte(addr),
 
             // SVBK.
-            0xFF70 if self.cgb_mode => self.wram_bank as u8,
+            0xFF70 if self.is_cgb => self.wram_bank as u8,
 
             // High RAM.
             0xFF80..=0xFFFE => self.high_ram[(addr - 0xFF80) as usize],
@@ -243,9 +243,9 @@ impl Bus {
                 }
             }
 
-            0xFF51..=0xFF55 if self.cgb_mode => self.cgb_dma.write_byte(addr, value),
+            0xFF51..=0xFF55 if self.is_cgb => self.cgb_dma.write_byte(addr, value),
 
-            0xFF70 if self.cgb_mode => {
+            0xFF70 if self.is_cgb => {
                 let bank = (value & 0b111) as usize;
 
                 self.wram_bank = if bank == 0 { 1 } else { bank }
