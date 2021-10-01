@@ -32,7 +32,11 @@ pub(crate) struct Joypad {
 impl Joypad {
     /// Create a new `Joypad` instance.
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            buttons: true,
+            dpad: true,
+            ..Default::default()
+        }
     }
 
     /// Check if an interrupt is requested, and if yes set the joypad bit
