@@ -1,4 +1,4 @@
-use crate::helpers::set;
+use crate::helpers::BitExt;
 
 /// Enumerates all possible keys that are present on the
 /// Game Boy and Game Boy Color.
@@ -43,7 +43,7 @@ impl Joypad {
     /// in the provided reference to IF register.
     pub fn update_interrupt_state(&mut self, if_reg: &mut u8) {
         if self.interrupt_requested {
-            set!(if_reg, 4);
+            if_reg.set(4);
         }
 
         self.interrupt_requested = false;

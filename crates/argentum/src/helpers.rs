@@ -1,22 +1,33 @@
-/// Get a bit of a number.
-macro_rules! bit {
-    ($num:expr, $bit:expr) => {
-        (*($num) & (1 << $bit)) != 0
+pub trait BitExt {
+    /// Test a bit of an unsigned integer.
+    fn bit(&self, bit: u32) -> bool;
+
+    /// Set a bit of an unsigned integer.
+    fn set(&mut self, bit: u32);
+
+    /// Reset a bit of an unsigned integer.
+    fn res(&mut self, bit: u32);
+}
+
+macro_rules! impl_bit_ext {
+    ($($ty:ty),+) => {
+        $(impl BitExt for $ty {
+            #[inline]
+            fn bit(&self, bit: u32) -> bool {
+                (*self & (1 << bit)) != 0
+            }
+
+            #[inline]
+            fn set(&mut self, bit: u32) {
+                *self |= (1 << bit);
+            }
+
+            #[inline]
+            fn res(&mut self, bit: u32) {
+                *self &= !(1 << bit);
+            }
+        })+
     };
 }
 
-/// Set a bit of a number.
-macro_rules! set {
-    ($num:expr, $bit:expr) => {
-        *($num) |= (1 << $bit);
-    };
-}
-
-/// Reset a bit of a number.
-macro_rules! res {
-    ($num:expr, $bit:expr) => {
-        *($num) &= !(1 << $bit);
-    };
-}
-
-pub(crate) use {bit, res, set};
+impl_bit_ext!(u8, u16, u32, u64, u128);

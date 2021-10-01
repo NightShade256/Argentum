@@ -3,10 +3,7 @@ mod instructions;
 mod registers;
 
 use self::registers::Registers;
-use crate::{
-    bus::Bus,
-    helpers::{bit, res},
-};
+use crate::{bus::Bus, helpers::BitExt};
 
 /// Enumerates all the states the CPU can be in.
 #[derive(PartialEq)]
@@ -107,8 +104,8 @@ impl Cpu {
 
         if interrupts != 0 {
             for i in 0..5 {
-                if bit!(ie_reg, i) && bit!(if_reg, i) {
-                    res!(bus.get_if_mut(), i);
+                if ie_reg.bit(i as u32) && if_reg.bit(i as u32) {
+                    bus.get_if_mut().res(i as u32);
                     self.ime = false;
 
                     self.internal_cycle(bus);

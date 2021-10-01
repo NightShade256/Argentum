@@ -1,5 +1,5 @@
 use super::Bus;
-use crate::helpers::bit;
+use crate::helpers::BitExt;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TransferType {
@@ -56,7 +56,7 @@ impl CgbDma {
                 self.control = value;
                 self.len = (((value & 0x7F) as u16) + 1) << 4;
 
-                if bit!(&value, 7) {
+                if value.bit(7) {
                     self.status = Some(TransferType::Hdma);
                 } else {
                     if let Some(TransferType::Hdma) = self.status {

@@ -1,4 +1,4 @@
-use crate::helpers::set;
+use crate::helpers::BitExt;
 
 #[derive(Debug, Default)]
 pub struct Timer {
@@ -136,7 +136,7 @@ impl Timer {
 
                     if *cycles == 0 {
                         self.tima = self.tma;
-                        set!(if_reg, 2);
+                        if_reg.set(2);
                     }
                 }
             }
