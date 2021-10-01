@@ -1,18 +1,12 @@
 use crate::{audio::Apu, cartridge::*, joypad::Joypad, ppu::Ppu, timer::Timer};
 
+mod bootrom;
 mod dma;
 mod interrupts;
 mod speed_switch;
 
+use self::bootrom::{CGB_BOOT_ROM, DMG_BOOT_ROM};
 use self::dma::CgbDma;
-
-/// This is a custom bootrom for DMG
-/// made by LIJI.
-static DMG_BOOT_ROM: &[u8] = include_bytes!("bootrom/dmg_boot.bin");
-
-/// This is a custom bootrom for CGB
-/// made by LIJI.
-static CGB_BOOT_ROM: &[u8] = include_bytes!("bootrom/cgb_boot.bin");
 
 /// Implementation of the Game Boy memory bus.
 pub(crate) struct Bus {
