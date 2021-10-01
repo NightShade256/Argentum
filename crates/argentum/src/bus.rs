@@ -73,7 +73,7 @@ impl Bus {
             cartridge,
             work_ram: Box::new([0; 0x8000]),
             high_ram: Box::new([0; 0x7F]),
-            timer: Timer::new(),
+            timer: Timer::new(cgb_mode),
             ppu: Ppu::new(cgb_mode),
             apu: Apu::new(callback),
             joypad: Joypad::new(),
@@ -273,6 +273,8 @@ impl Bus {
         self.write_byte(0xFF49, 0xFF, false);
 
         self.boot_reg = 1;
+
+        self.timer.skip_bootrom();
     }
 
     /// Tick the components on the Bus.

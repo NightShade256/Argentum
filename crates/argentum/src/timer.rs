@@ -33,35 +33,12 @@ pub(crate) struct Timer {
 
     /// The T-cycles remaining for TIMA reload to occur, if any.
     tima_reload: Option<u8>,
+
+    /// Indicates whether we are emulating the CGB or the DMG.
+    is_cgb: bool,
 }
 
 impl Timer {
-    /// Create a new `Timer` instance.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Tick the timers and divider by the given amount of T-cycles.
-    pub fn tick(&mut self, if_reg: &mut u8, cycles: u32) {
-        for _ in 0..cycles {
-            if let Some(ref mut cycles) = self.tima_reload {
-                if *cycles == 0 {
-                    self.tima_reload = None;
-                } else {
-                    *cycles -= 1;
-
-                    if *cycles == 0 {
-                        self.tima = self.tma;
-                        set!(if_reg, 2);
-                    }
-                }
-            }
-
-            self.div = self.div.wrapping_add(1);
-            self.check_falling_edge();
-        }
-    }
-
     /// Check for a falling edge on the selected bit of DIV.
     fn check_falling_edge(&mut self) {
         let bit = match self.tac & 0x03 {
@@ -85,6 +62,26 @@ impl Timer {
         }
 
         self.last_and_result = and_result;
+    }
+}
+
+impl Timer {
+    /// Create a new `Timer` instance.
+    pub fn new(is_cgb: bool) -> Self {
+        Self {
+            is_cgb,
+            ..Default::default()
+        }
+    }
+
+    /// Initialize the `Timer` to post-bootrom state.
+    pub fn skip_bootrom(&mut self) {
+        /* CGB value is stubbed to FF, a program should not rely on this value */
+        if self.is_cgb {
+            self.div = 0xFF << 8;
+        } else {
+            self.div = 0xAB << 8;
+        }
     }
 
     /// Read a byte from the specified address.
@@ -125,6 +122,27 @@ impl Timer {
             }
 
             _ => unreachable!(),
+        }
+    }
+
+    /// Tick the timers and divider by the given amount of T-cycles.
+    pub fn tick(&mut self, if_reg: &mut u8, cycles: u32) {
+        for _ in 0..cycles {
+            if let Some(ref mut cycles) = self.tima_reload {
+                if *cycles == 0 {
+                    self.tima_reload = None;
+                } else {
+                    *cycles -= 1;
+
+                    if *cycles == 0 {
+                        self.tima = self.tma;
+                        set!(if_reg, 2);
+                    }
+                }
+            }
+
+            self.div = self.div.wrapping_add(1);
+            self.check_falling_edge();
         }
     }
 }
