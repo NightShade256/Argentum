@@ -7,7 +7,6 @@ impl Bus {
     }
 
     /// Get an immuatable reference to the IE register.
-
     pub fn get_ie(&self) -> &u8 {
         &self.ie_reg
     }
