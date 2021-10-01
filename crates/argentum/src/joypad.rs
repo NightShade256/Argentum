@@ -15,7 +15,7 @@ pub enum ArgentumKey {
 }
 
 #[derive(Default)]
-pub(crate) struct Joypad {
+pub struct Joypad {
     /// Indicates if the buttons control bit selected.
     buttons: bool,
 

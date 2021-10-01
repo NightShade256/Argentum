@@ -38,14 +38,14 @@ impl From<[u8; 4]> for Sprite {
 /// Enumerates all the different modes the PPU can be in.
 #[derive(Clone, Copy)]
 #[repr(u8)]
-pub(crate) enum PpuMode {
+pub enum PpuMode {
     HBlank = 0,
     VBlank = 1,
     OamSearch = 2,
     Drawing = 3,
 }
 
-pub(crate) struct Ppu {
+pub struct Ppu {
     /// 8 KiB of Video RAM
     ///
     /// Mapped to 0x8000 to 0x9FFF.

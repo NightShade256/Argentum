@@ -9,7 +9,7 @@ use self::bootrom::{CGB_BOOT_ROM, DMG_BOOT_ROM};
 use self::dma::CgbDma;
 
 /// Implementation of the Game Boy memory bus.
-pub(crate) struct Bus {
+pub struct Bus {
     // The inserted cartridge.
     pub cartridge: Box<dyn Cartridge>,
 

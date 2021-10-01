@@ -1,7 +1,7 @@
 use crate::helpers::set;
 
 #[derive(Debug, Default)]
-pub(crate) struct Timer {
+pub struct Timer {
     /// 0xFF04 - Divider Register.
     ///
     /// It is incremented every T-cycle, but only the upper

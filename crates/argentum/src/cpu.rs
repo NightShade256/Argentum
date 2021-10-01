@@ -16,7 +16,7 @@ pub enum CpuState {
 }
 
 /// Implementation of the Sharp SM83 CPU.
-pub(crate) struct Cpu {
+pub struct Cpu {
     /// The amount of T-cycles taken by the current instruction.
     cycles: u32,
 
