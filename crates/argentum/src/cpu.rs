@@ -80,7 +80,7 @@ impl Cpu {
     /// Execute an internal cycle (used when doing 16-bit arithmetic or jumps).
     pub fn internal_cycle(&mut self, bus: &mut Bus) {
         self.cycles += 4;
-        bus.tick(4);
+        bus.tick_components(4);
     }
 
     /// Read a byte from the address contained within the PC, and increment

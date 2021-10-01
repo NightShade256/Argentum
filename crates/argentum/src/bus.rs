@@ -170,7 +170,7 @@ impl Bus {
         };
 
         if tick {
-            self.tick(4);
+            self.tick_components(4);
         }
 
         value
@@ -261,7 +261,7 @@ impl Bus {
         }
 
         if tick {
-            self.tick(4);
+            self.tick_components(4);
         }
     }
 
@@ -276,7 +276,7 @@ impl Bus {
     }
 
     /// Tick the components on the Bus.
-    pub fn tick(&mut self, cycles: u32) {
+    pub fn tick_components(&mut self, cycles: u32) {
         let relative_cycles = cycles >> (self.is_double_speed() as u8);
 
         self.timer.tick(&mut self.if_reg, cycles);
