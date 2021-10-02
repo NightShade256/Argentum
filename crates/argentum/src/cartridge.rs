@@ -1,27 +1,24 @@
+use crate::helpers::BitExt;
+
 /// RAM Size corresponding to indices
 /// in cartridge headers.
 const RAM_SIZES: [usize; 6] = [0x0000, 0x0000, 0x2000, 0x8000, 0x20000, 0x10000];
 
 /// Trait implemented by all cartridges.
 pub trait Cartridge {
-    /// Return the title of the game.
-    fn game_title(&self) -> String;
-
     /// Read a byte from the given address.
     fn read_byte(&self, addr: u16) -> u8;
 
     /// Write a byte to the given address.
     fn write_byte(&mut self, addr: u16, value: u8);
 
-    /// Detects whether the game is a CGB game.
-    fn has_cgb_support(&self) -> bool {
-        let cgb_flag_byte = self.read_byte(0x0143);
+    /// Get SRAM as a vector of bytes if present.
+    fn get_sram(&self) -> Option<Vec<u8>>;
 
-        // A game supports CGB functions if the upper bit is set.
-        (cgb_flag_byte & 0x80) != 0
+    /// Returns `true` if the game is CGB compatible.
+    fn is_cgb_compatible(&self) -> bool {
+        self.read_byte(0x0143).bit(7)
     }
-
-    fn dump_ram(&self) -> Option<Vec<u8>>;
 }
 
 /// Cartridge with just two ROM banks.
@@ -38,21 +35,15 @@ impl RomOnly {
 }
 
 impl Cartridge for RomOnly {
-    fn game_title(&self) -> String {
-        if self.has_cgb_support() {
-            String::from_utf8_lossy(&self.rom[0x134..=0x013E]).into()
-        } else {
-            String::from_utf8_lossy(&self.rom[0x134..=0x0143]).into()
-        }
-    }
-
     fn read_byte(&self, addr: u16) -> u8 {
         self.rom[addr as usize]
     }
 
-    fn write_byte(&mut self, _: u16, _: u8) {}
+    fn write_byte(&mut self, _: u16, _: u8) {
+        /* writes are ignored when there is no MBC */
+    }
 
-    fn dump_ram(&self) -> Option<Vec<u8>> {
+    fn get_sram(&self) -> Option<Vec<u8>> {
         None
     }
 }
@@ -106,14 +97,6 @@ impl Mbc1 {
 }
 
 impl Cartridge for Mbc1 {
-    fn game_title(&self) -> String {
-        if self.has_cgb_support() {
-            String::from_utf8_lossy(&self.rom[0x134..=0x013E]).into()
-        } else {
-            String::from_utf8_lossy(&self.rom[0x134..=0x0143]).into()
-        }
-    }
-
     fn read_byte(&self, addr: u16) -> u8 {
         match addr {
             0x0000..=0x3FFF => {
@@ -191,7 +174,7 @@ impl Cartridge for Mbc1 {
         }
     }
 
-    fn dump_ram(&self) -> Option<Vec<u8>> {
+    fn get_sram(&self) -> Option<Vec<u8>> {
         if !self.ram.is_empty() {
             Some(self.ram.clone())
         } else {
@@ -254,14 +237,6 @@ impl Mbc3 {
 }
 
 impl Cartridge for Mbc3 {
-    fn game_title(&self) -> String {
-        if self.has_cgb_support() {
-            String::from_utf8_lossy(&self.rom[0x134..=0x013E]).into()
-        } else {
-            String::from_utf8_lossy(&self.rom[0x134..=0x0143]).into()
-        }
-    }
-
     fn read_byte(&self, addr: u16) -> u8 {
         match addr {
             0x0000..=0x3FFF => self.rom[addr as usize],
@@ -314,7 +289,7 @@ impl Cartridge for Mbc3 {
         }
     }
 
-    fn dump_ram(&self) -> Option<Vec<u8>> {
+    fn get_sram(&self) -> Option<Vec<u8>> {
         if !self.ram.is_empty() {
             Some(self.ram.clone())
         } else {
@@ -372,14 +347,6 @@ impl Mbc5 {
 }
 
 impl Cartridge for Mbc5 {
-    fn game_title(&self) -> String {
-        if self.has_cgb_support() {
-            String::from_utf8_lossy(&self.rom[0x134..=0x013E]).into()
-        } else {
-            String::from_utf8_lossy(&self.rom[0x134..=0x0143]).into()
-        }
-    }
-
     fn read_byte(&self, addr: u16) -> u8 {
         match addr {
             0x0000..=0x3FFF => self.rom[addr as usize],
@@ -434,7 +401,7 @@ impl Cartridge for Mbc5 {
         }
     }
 
-    fn dump_ram(&self) -> Option<Vec<u8>> {
+    fn get_sram(&self) -> Option<Vec<u8>> {
         if !self.ram.is_empty() {
             Some(self.ram.clone())
         } else {

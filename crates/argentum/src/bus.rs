@@ -67,7 +67,7 @@ impl Bus {
             _ => panic!("unsupported cartridge type"),
         };
 
-        let is_cgb = cartridge.has_cgb_support();
+        let is_cgb = cartridge.is_cgb_compatible();
 
         Self {
             cartridge,

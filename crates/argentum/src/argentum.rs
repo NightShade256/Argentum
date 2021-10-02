@@ -56,6 +56,6 @@ impl Argentum {
             return None;
         }
 
-        self.bus.cartridge.dump_ram()
+        self.bus.cartridge.get_sram()
     }
 }
