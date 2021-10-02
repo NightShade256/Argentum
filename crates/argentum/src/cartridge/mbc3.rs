@@ -30,7 +30,7 @@ pub struct Mbc3 {
 
 impl Mbc3 {
     /// Create a new `Mbc3` instance.
-    pub fn new(rom: &[u8], save_file: Option<Vec<u8>>) -> Self {
+    pub fn new(rom: Vec<u8>, save_file: Option<Vec<u8>>) -> Self {
         let mut ram = vec![0u8; RAM_SIZES[rom[0x0149] as usize]];
 
         if !ram.is_empty() {
@@ -42,13 +42,13 @@ impl Mbc3 {
         }
 
         Self {
-            rom: rom.to_vec(),
             ram,
             ram_enabled: false,
             rom_bank: 1,
             ram_bank: 0,
             rom_banks: 2 * 2usize.pow(rom[0x0148] as u32),
             ram_banks: (RAM_SIZES[rom[0x0149] as usize] >> 13) as usize,
+            rom,
         }
     }
 }

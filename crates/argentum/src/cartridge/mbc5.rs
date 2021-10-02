@@ -34,9 +34,8 @@ pub struct Mbc5 {
 
 impl Mbc5 {
     /// Create a new `Mbc5` instance.
-    pub fn new(rom: &[u8]) -> Self {
+    pub fn new(rom: Vec<u8>) -> Self {
         Self {
-            rom: rom.to_vec(),
             ram: vec![0u8; RAM_SIZES[rom[0x0149] as usize]],
             ram_enabled: false,
             rom_bank_lower: 1,
@@ -44,6 +43,7 @@ impl Mbc5 {
             ram_bank: 0,
             rom_banks: 2 * 2usize.pow(rom[0x0148] as u32),
             ram_banks: (RAM_SIZES[rom[0x0149] as usize] >> 13) as usize,
+            rom,
         }
     }
 }

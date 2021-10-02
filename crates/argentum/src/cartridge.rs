@@ -28,10 +28,10 @@ pub trait Cartridge {
 
 pub fn make_cartridge(rom: Vec<u8>, save_file: Option<Vec<u8>>) -> Box<dyn Cartridge> {
     match rom[0x0147] {
-        0x00 => Box::new(mbc0::Mbc0::new(&rom)),
-        0x01..=0x03 => Box::new(mbc1::Mbc1::new(&rom)),
-        0x0F..=0x13 => Box::new(mbc3::Mbc3::new(&rom, save_file)),
-        0x19..=0x1E => Box::new(mbc5::Mbc5::new(&rom)),
+        0x00 => Box::new(mbc0::Mbc0::new(rom)),
+        0x01..=0x03 => Box::new(mbc1::Mbc1::new(rom)),
+        0x0F..=0x13 => Box::new(mbc3::Mbc3::new(rom, save_file)),
+        0x19..=0x1E => Box::new(mbc5::Mbc5::new(rom)),
 
         _ => panic!("unsupported cartridge type"),
     }

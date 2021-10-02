@@ -8,8 +8,8 @@ pub struct Mbc0 {
 
 impl Mbc0 {
     /// Create a new `RomOnly` instance.
-    pub fn new(rom: &[u8]) -> Self {
-        Self { rom: rom.to_vec() }
+    pub fn new(rom: Vec<u8>) -> Self {
+        Self { rom }
     }
 }
 
