@@ -57,16 +57,8 @@ pub struct Bus {
 
 impl Bus {
     /// Create a new `Bus` instance.
-    pub fn new(rom: &[u8], callback: Box<dyn Fn(&[f32])>, save_file: Option<Vec<u8>>) -> Self {
-        let cartridge: Box<dyn Cartridge> = match rom[0x0147] {
-            0x00 => Box::new(RomOnly::new(rom)),
-            0x01..=0x03 => Box::new(Mbc1::new(rom)),
-            0x0F..=0x13 => Box::new(Mbc3::new(rom, save_file)),
-            0x19..=0x1E => Box::new(Mbc5::new(rom)),
-
-            _ => panic!("unsupported cartridge type"),
-        };
-
+    pub fn new(rom: Vec<u8>, callback: Box<dyn Fn(&[f32])>, save_file: Option<Vec<u8>>) -> Self {
+        let cartridge = make_cartridge(rom, save_file);
         let is_cgb = cartridge.is_cgb_compatible();
 
         Self {

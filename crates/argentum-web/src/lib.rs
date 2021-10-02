@@ -26,7 +26,7 @@ pub struct ArgentumHandle(Argentum);
 #[wasm_bindgen]
 impl ArgentumHandle {
     /// Create a new `ArgentumHandle` instance.
-    pub fn new(rom: &[u8], callback: Function) -> Self {
+    pub fn new(rom: Vec<u8>, callback: Function) -> Self {
         let callback = Box::new(move |buffer: &[f32]| {
             callback
                 .call1(&JsValue::null(), &Float32Array::from(buffer))

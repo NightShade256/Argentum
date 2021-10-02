@@ -94,7 +94,7 @@ fn main() {
 
     // Create an Argentum instance
     let mut argentum = Argentum::new(
-        &rom,
+        rom,
         Box::new(move |buffer| {
             while audio_queue.size() > 1024 * 4 * 2 {
                 std::thread::sleep(Duration::from_millis(1));
