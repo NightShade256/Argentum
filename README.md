@@ -39,9 +39,9 @@ Argentum is certainly not perfect, but it supports the following features.
 - Passing blargg's CPU tests, instruction timing tests and memory timing tests.
 - Passing all of mooneye-gb timer (not timing!) tests.
 - PPU (scanline-based) which passes the dmg-acid2 and cgb-acid2 PPU tests.
-- Great CGB Support.
+- CGB Support.
 - MBC1 (no multicarts), MBC3 (no RTC) and MBC5 (no rumble) cartridges are supported.
-- Support for sound with all sound channels working as intended.
+- Support for sound with all channels.
 - Boot ROM support (right now only SameBoot is supported).
 - Battery Saves support (extremely experimental, should not be relied upon!)
 
