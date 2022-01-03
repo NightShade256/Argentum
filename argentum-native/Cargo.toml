@@ -8,5 +8,5 @@ license = "Apache-2.0"
 [dependencies]
 argentum = { path = "../argentum" }
 clap = "3.0.0-beta.4"
-pixels = "0.6.0"
+pixels = "0.9.0"
 sdl2 = { version = "0.34.5", features = ["bundled", "raw-window-handle", "static-link"] }
