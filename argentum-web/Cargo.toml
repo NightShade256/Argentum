@@ -8,6 +8,6 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 argentum = { path = "../argentum" }
-js-sys = "0.3.54"
+js-sys = "0.3.57"
 rodio = { version = "0.14.0", default-features = false, features = ["wasm-bindgen"] }
 wasm-bindgen = "0.2.77"
