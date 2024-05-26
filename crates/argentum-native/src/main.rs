@@ -161,6 +161,13 @@ impl ApplicationHandler for App {
             _ => (),
         }
     }
+
+    fn exiting(&mut self, _: &ActiveEventLoop) {
+        if let Some(ram_save) = self.emulator.as_ref().unwrap().get_ram_dump() {
+            std::fs::write(self.rom_path.with_extension("sav"), &ram_save)
+                .expect("failed to write save file");
+        }
+    }
 }
 
 fn main() {
