@@ -1142,7 +1142,7 @@ impl Channel for ChannelFour {
             }
         }
 
-        self.frequency_timer -= 1;
+        self.frequency_timer = self.frequency_timer.wrapping_sub(1);
     }
 
     fn get_amplitude(&self) -> f32 {
